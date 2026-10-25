@@ -8,8 +8,8 @@ version = "0.1.0"
 description = "SYNTHETIC 3x3 density-matrix membrane lattice with Yang Observer and Yin Calibrator shields"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "AGPL-3.0-or-later"}
-authors = [{name = "Jean-Francois Brisson"}]
+license = {text = "AGPL-3.0-only"}
+authors = [{name = "Jean-François Brisson"}]
 dependencies = ["numpy>=1.24"]
 
 [project.scripts]
