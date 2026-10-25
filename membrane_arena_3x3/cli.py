@@ -27,7 +27,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--json", default=None, help="Write full JSON results to this path"
     )
     parser.add_argument(
-        "--quiet", action="store_true", help="Print only the final summary"
+        "--quiet",
+        action="store_true",
+        help="Accepted for compatibility; the output is always the short summary",
     )
     return parser
 
@@ -35,19 +37,23 @@ def main() -> None:
     """Run the simulation from the command line."""
     args = build_parser().parse_args()
 
-    config = EngineConfig(
-        lattice=LatticeConfig(
-            coupling=args.coupling,
-            dephasing=args.dephasing,
-            mirror_strength=args.mirror,
-            dt=args.dt,
-        ),
-        steps=args.steps,
-        seed=args.seed,
-        schumann=args.schumann,
-        schumann_hz=args.schumann_hz,
-        schumann_amplitude=args.schumann_amplitude,
-    )
+    parser = build_parser()
+    try:
+        config = EngineConfig(
+            lattice=LatticeConfig(
+                coupling=args.coupling,
+                dephasing=args.dephasing,
+                mirror_strength=args.mirror,
+                dt=args.dt,
+            ),
+            steps=args.steps,
+            seed=args.seed,
+            schumann=args.schumann,
+            schumann_hz=args.schumann_hz,
+            schumann_amplitude=args.schumann_amplitude,
+        )
+    except ValueError as error:
+        parser.error(str(error))
 
     result = MembraneArena3x3(config).run()
 
