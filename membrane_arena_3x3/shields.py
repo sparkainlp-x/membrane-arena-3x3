@@ -8,6 +8,14 @@ import numpy as np
 
 from .core import fidelity, normalized_entropy, purity, residual_infinity
 
+
+def _read_only(array: np.ndarray) -> np.ndarray:
+    """Return a view of `array` that raises if anything tries to write to it."""
+    view = np.asarray(array).view()
+    view.flags.writeable = False
+    return view
+
+
 @dataclass
 class Observation:
     """Read-only stability telemetry produced by the Yang Observer Shield.
@@ -65,7 +73,13 @@ class YangObserverShield:
     def observe(
         self, state: np.ndarray, reference: np.ndarray, step: int
     ) -> Observation:
-        """Compute stability metrics for all nine membrane cells."""
+        """Compute stability metrics for all nine membrane cells.
+
+        The inputs are wrapped in read-only views, so an accidental write
+        inside the observer raises instead of changing the lattice.
+        """
+        state = _read_only(state)
+        reference = _read_only(reference)
         cells = state.reshape(-1, state.shape[-2], state.shape[-1])
         refs = reference.reshape(-1, reference.shape[-2], reference.shape[-1])
 
