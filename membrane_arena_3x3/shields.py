@@ -45,7 +45,7 @@ class CalibrationAction:
     feedback: float
     schumann: float
     total_signal: float
-    coupling: float
+    coupling: float  # parameter values in effect (set by the engine), not proposals
     dephasing: float
     mirror_strength: float
     accepted: bool

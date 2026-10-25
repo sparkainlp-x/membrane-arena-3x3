@@ -84,6 +84,13 @@ class MembraneArena3x3:
             self.config.lattice.dt,
         )
 
+        # The calibrator never changes these; log the values in effect so the
+        # audit trail does not show misleading zeros.
+        lattice_cfg = self.config.lattice
+        action.coupling = lattice_cfg.coupling
+        action.dephasing = lattice_cfg.dephasing
+        action.mirror_strength = lattice_cfg.mirror_strength
+
         candidate = self.lattice.propose_step(action.total_signal)
         accepted, reason = self._validate(candidate)
 
