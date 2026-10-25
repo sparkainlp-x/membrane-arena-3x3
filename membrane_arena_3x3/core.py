@@ -10,7 +10,7 @@ import numpy as np
 DIM = 32
 EPS = 1e-12
 
-def random_density_matrix(rng: np.Generator, dim: int = DIM) -> np.ndarray:
+def random_density_matrix(rng: np.random.Generator, dim: int = DIM) -> np.ndarray:
     """Return a valid random density matrix using the Ginibre construction."""
     a = rng.normal(size=(dim, dim)) + 1j * rng.normal(size=(dim, dim))
     rho = a @ a.conj().T
