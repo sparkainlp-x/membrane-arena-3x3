@@ -10,7 +10,13 @@ from .core import fidelity, normalized_entropy, purity, residual_infinity
 
 @dataclass
 class Observation:
-    """Read-only stability telemetry produced by the Yang Observer Shield."""
+    """Read-only stability telemetry produced by the Yang Observer Shield.
+
+    `mean_coherence` is the mean purity tr(rho^2) over the nine cells (the
+    same quantity as `min_purity`, averaged instead of minimized); it is not
+    an off-diagonal coherence measure. `lyapunov_proxy` is a weighted penalty
+    score, not a Lyapunov function: nothing guarantees that it decreases.
+    """
 
     step: int
     mean_coherence: float
@@ -41,7 +47,10 @@ class CalibrationAction:
         return asdict(self)
 
 class YangObserverShield:
-    """Read-only observer. It never mutates lattice state."""
+    """Read-only observer. It never mutates lattice state.
+
+    `divergence_min` is stored but not used by any check.
+    """
 
     def __init__(
         self,
@@ -110,7 +119,12 @@ class YangObserverShield:
         return True, "ok"
 
 class YinCalibratorShield:
-    """Bounded calibrator. It proposes control but cannot bypass safety checks."""
+    """Bounded calibrator. It proposes control but cannot bypass the checks.
+
+    Its only control output is one clipped scalar, `total_signal`, which pulls
+    every cell toward its initial reference state. It never proposes new
+    coupling, dephasing or mirror values.
+    """
 
     def __init__(
         self,

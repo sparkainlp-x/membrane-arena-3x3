@@ -20,7 +20,7 @@ class EngineConfig:
     schumann: bool = False
     schumann_hz: float = 7.83
     schumann_amplitude: float = 0.02
-    failure_limit: int = 5
+    failure_limit: int = 5  # consecutive rejected updates before the breaker latches
 
 class MembraneArena3x3:
     """Run a fail-closed 3x3 membrane simulation with independent shields."""

@@ -84,7 +84,13 @@ class MembraneLattice:
         return delta / max(len(self.neighbors(i, j)), 1)
 
     def propose_step(self, calibrator_signal: float = 0.0) -> np.ndarray:
-        """Return a candidate next state without mutating the current lattice."""
+        """Return a candidate next state without mutating the current lattice.
+
+        The commutator term is a single explicit Euler step, not the exact
+        unitary exp(-i H dt) conjugation; the projection to a valid density
+        matrix afterwards keeps the candidate valid but does not make the
+        step norm-preserving.
+        """
         cfg = self.config
         candidate = np.empty_like(self.state)
 
@@ -113,5 +119,5 @@ class MembraneLattice:
         return candidate
 
     def commit(self, candidate: np.ndarray) -> None:
-        """Atomically replace the lattice state with a validated candidate."""
+        """Atomically replace the lattice state with a checked candidate."""
         self.state = candidate.copy()

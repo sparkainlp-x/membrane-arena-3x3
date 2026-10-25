@@ -71,7 +71,13 @@ def _sqrtm(rho: np.ndarray) -> np.ndarray:
     return (vecs * np.sqrt(vals)) @ vecs.conj().T
 
 def apply_dephasing(rho: np.ndarray, gamma: float) -> np.ndarray:
-    """Apply phase damping in the computational basis."""
+    """Damp matrix entries by exp(-gamma * (i + j)) and renormalize.
+
+    Despite the name this is not trace-preserving phase damping: the diagonal
+    is damped too (by exp(-2 * gamma * i)), so after renormalization the
+    populations shift toward low basis indices and the state becomes purer.
+    The behavior is kept as published; see "Known limits" in the README.
+    """
     if gamma <= 0:
         return rho
     factors = np.exp(-gamma * np.arange(rho.shape[0]))
