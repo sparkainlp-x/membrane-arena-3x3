@@ -120,9 +120,11 @@ class MembraneArena3x3:
         }
 
     def run(self) -> dict:
-        """Run the configured number of steps, stopping if the breaker opens."""
-        self.current_step = 0
+        """Run the configured number of further steps, stopping if the breaker opens.
 
+        The step counter and the logs continue from where the last call
+        stopped; a second call does not restart them.
+        """
         for _ in range(self.config.steps):
             result = self.step()
             if result["status"] == "circuit_breaker_open":
