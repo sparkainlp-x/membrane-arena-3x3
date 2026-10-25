@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "membrane-arena-3x3"
+version = "0.1.0"
+description = "SYNTHETIC 3x3 density-matrix membrane lattice with Yang Observer and Yin Calibrator shields"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "AGPL-3.0-or-later"}
+authors = [{name = "Jean-Francois Brisson"}]
+dependencies = ["numpy>=1.24"]
+
+[project.scripts]
+membrane-arena-3x3 = "membrane_arena_3x3.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["membrane_arena_3x3*"]
