@@ -1,0 +1,24 @@
+{
+  "title": "Membrane Arena 3x3 + Yin-Yang Shield: a 3x3 lattice of density-matrix cells with an observer and a calibrator (SYNTHETIC classical simulation)",
+  "version": "0.1.0",
+  "upload_type": "software",
+  "description": "<p>SYNTHETIC classical simulation in Python and NumPy of a 3x3 lattice of 32-dimensional density-matrix cells with a read-only observer, a bounded calibrator, transactional all-or-nothing updates and a circuit breaker. 'Holographic universe', 'Yin', 'Yang' and 'Schumann' are names only; the 7.83 Hz signal is an arbitrary sinusoid with no physical claim. Not quantum hardware and not a control system. The README documents measured behavior and known limits, including that the default settings latch the breaker after about 8 steps. A separate project from the membrane-arena browser game.</p>",
+  "creators": [
+    {
+      "name": "Brisson, Jean-François",
+      "orcid": "0009-0000-9778-5374",
+      "affiliation": "Spark AI NLP, Fredericton, New Brunswick, Canada"
+    }
+  ],
+  "license": "AGPL-3.0-only",
+  "access_right": "open",
+  "language": "eng",
+  "keywords": [
+    "synthetic",
+    "density matrix",
+    "simulation",
+    "fail-closed",
+    "NumPy",
+    "Python"
+  ]
+}
