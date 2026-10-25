@@ -132,15 +132,14 @@ class MembraneArena3x3:
 
     def summary(self) -> dict:
         """Return a machine-readable experiment summary."""
-        if not self.observations:
-            return {"status": "no_steps", "accepted_steps": 0}
-
-        final = self.observations[-1]
+        final = self.observations[-1] if self.observations else {}
         accepted = sum(1 for item in self.calibrations if item["accepted"])
 
         return {
             "status": (
-                "circuit_breaker_open" if self.circuit_breaker else "completed"
+                "circuit_breaker_open"
+                if self.circuit_breaker
+                else "completed" if self.observations else "no_steps"
             ),
             "steps_requested": self.config.steps,
             "steps_executed": len(self.observations),
