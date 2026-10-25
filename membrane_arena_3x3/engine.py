@@ -22,6 +22,25 @@ class EngineConfig:
     schumann_amplitude: float = 0.02
     failure_limit: int = 5  # consecutive rejected updates before the breaker latches
 
+    def __post_init__(self) -> None:
+        """Reject settings that make a run meaningless or alias the signal."""
+        if self.steps < 0:
+            raise ValueError("steps must be >= 0")
+        if self.failure_limit < 1:
+            raise ValueError("failure_limit must be >= 1")
+        if not self.lattice.dt > 0:
+            raise ValueError("dt must be > 0")
+        if self.schumann:
+            if not self.schumann_hz > 0:
+                raise ValueError("schumann_hz must be > 0")
+            nyquist = 0.5 / self.lattice.dt
+            if self.schumann_hz >= nyquist:
+                raise ValueError(
+                    f"schumann_hz={self.schumann_hz} is at or above the sampling "
+                    f"Nyquist limit {nyquist:g} Hz for dt={self.lattice.dt}; "
+                    "the sampled sinusoid would alias"
+                )
+
 class MembraneArena3x3:
     """Run a fail-closed 3x3 membrane simulation with independent shields."""
 
