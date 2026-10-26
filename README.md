@@ -85,6 +85,50 @@ These are properties of the model as published, not bugs that were fixed. Statem
 11. **One seed means one lattice.** Results from a single seed describe that random instance. Only seeds 0 to 19 were tried for the default settings.
 12. **Platforms.** The 63 tests passed locally on Python 3.10, 3.11, 3.12 and 3.13 on one Linux machine, and CI runs 3.10 to 3.13 on Ubuntu. Other operating systems, other NumPy versions and run time on other hardware were not tested.
 
+## Crystallize injection (opt-in)
+
+**SYNTHETIC classical software; no physical claim.** Known limit 1 says the stock engine retries the identical proposal after a rejection. `MembraneArena3x3WithInjection` (in `membrane_arena_3x3/crystallize_injection.py`) is an opt-in subclass that, on a rejected step only, tries up to `max_attempts` (default 3) variant proposals before counting the failure:
+
+1. **Commit** a probability `p` (default 0.75) that a shrunk variant passes the guards.
+2. **Sample** a variant: `dt` times 0.5 (jittered 0.8 to 1.2 from a dedicated seeded random stream, so the main generator is never touched) and the mirror strength softened to 0.0.
+3. **Validate** it with the engine's own, unmodified `_validate`. Only a variant that passes is committed (and logged as an accepted step); a failed variant leaves the lattice unchanged.
+4. **Revise** after a miss: `p` moves halfway toward 0.5 and the step shrinks again (by 0.5 per attempt).
+5. **Score** with the Crystallize formulas: Brier = (p - truth)^2, points = 100 (1 - 4 Brier), where truth is whether the variant passed. Each variant costs 0.8 in the ledger.
+
+```python
+from membrane_arena_3x3.engine import EngineConfig
+from membrane_arena_3x3.crystallize_injection import run_simulation_with_injection
+
+summary = run_simulation_with_injection(EngineConfig(steps=200, seed=42))
+summary["injection_passes"], summary["injection_score_total"], summary["injections"]
+```
+
+With `InjectionConfig(max_attempts=0)` the subclass delegates to the stock `step()` and behaves exactly like the stock engine. The stock `MembraneArena3x3`, the CLI and the package exports are unchanged.
+
+**What it does NOT do:** it does **not** cure the arena. It never changes a guard, a threshold, a parameter bound or the circuit breaker, and every injected run below still ends with the breaker open; it adds a few steps and a calibration ledger. The negative scores are the ledger working: a commit of 0.75 against a usually-false outcome is overconfident, and the Brier score says so.
+
+Measured on one machine by `scripts/injection_sweep.py` (also written to `docs/injection_results.md`), 200 steps requested, default settings:
+
+| seed | base steps / accepted | injected steps / accepted | injection passes of events | injection score (points) | sampling cost | final status |
+|---|---|---|---|---|---|---|
+| 42 | 8 / 3 | 11 / 6 | 3 of 8 | -970.3 | 15.2 | circuit_breaker_open |
+| 0 | 9 / 4 | 10 / 5 | 1 of 6 | -1120.3 | 13.6 | circuit_breaker_open |
+| 1 | 8 / 3 | 9 / 4 | 1 of 6 | -964.1 | 12.8 | circuit_breaker_open |
+| 2 | 8 / 3 | 12 / 7 | 4 of 9 | -1128.1 | 17.6 | circuit_breaker_open |
+| 3 | 9 / 4 | 11 / 6 | 2 of 7 | -889.1 | 13.6 | circuit_breaker_open |
+
+Ablation, the same loop with the mirror left at the stock 0.10 (smaller `dt` only):
+
+| seed | base steps / accepted | injected steps / accepted | injection passes of events | injection score (points) | sampling cost | final status |
+|---|---|---|---|---|---|---|
+| 42 | 8 / 3 | 9 / 4 | 1 of 6 | -964.1 | 12.8 | circuit_breaker_open |
+| 0 | 9 / 4 | 9 / 4 | 0 of 5 | -1039.1 | 12.0 | circuit_breaker_open |
+| 1 | 8 / 3 | 9 / 4 | 1 of 6 | -1196.9 | 14.4 | circuit_breaker_open |
+| 2 | 8 / 3 | 9 / 4 | 1 of 6 | -964.1 | 12.8 | circuit_breaker_open |
+| 3 | 9 / 4 | 9 / 4 | 0 of 5 | -1039.1 | 12.0 | circuit_breaker_open |
+
+These numbers describe this synthetic model and these defaults only. Regenerate them with `python scripts/injection_sweep.py`.
+
 ## Guard rules
 
 - The observer works on read-only views, so an accidental write inside it raises instead of changing the lattice (`tests/test_observer.py`).
@@ -100,7 +144,7 @@ These are software checks inside a toy model. They are not safety mechanisms for
 pytest -q
 ```
 
-63 tests: validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
+78 tests (63 for the stock arena, 15 for the opt-in injection): validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
 
 ## Credit
 
