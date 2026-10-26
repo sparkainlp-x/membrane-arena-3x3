@@ -9,8 +9,12 @@ commit -> sample -> revise -> score loop (the Crystallize calibration loop):
 2. Sample: build the variant (smaller ``dt``, softened mirror) and validate it
    with the engine's own, unmodified ``_validate``.
 3. Revise: after a miss, move ``p`` halfway toward 0.5 and shrink the step again.
-4. Score: Brier = (p - truth)^2, points = 100 * (1 - 4 * Brier); every variant
-   tried costs ``cost_per_variant`` (0.8) in the ledger.
+4. Score: Brier = (p - truth)^2, points = 100 * (1 - 4 * Brier), with truth =
+   whether any variant passed. Exactly two forecasts are scored per event: the
+   first commit and the last commit (the one used for the last variant tried).
+   Event score = 0.5 * points(p_first) + 0.5 * points(p_last) - cost, where
+   cost = ``cost_per_variant`` (0.8) per variant tried. Variants are not scored
+   one by one.
 
 What this does NOT do: it never changes a guard, a threshold, a parameter
 bound or the circuit breaker, and it does not cure the arena. This is
@@ -18,9 +22,11 @@ SYNTHETIC classical software; nothing here is a physical claim.
 
 Design notes
 ------------
-* The injection uses its own random stream (``numpy.random.default_rng`` seeded
-  from ``[EngineConfig.seed, InjectionConfig.rng_salt]``). The engine's main
-  generator is never drawn from, so stock behaviour is unchanged.
+* The injection uses its own random stream
+  (``numpy.random.default_rng(EngineConfig.seed + InjectionConfig.seed_offset)``,
+  offset 10_000_007) with one ``uniform(jitter_low, jitter_high)`` draw (default
+  0.8 to 1.2) per attempt. The engine's main generator is never drawn from, so
+  stock behaviour is unchanged. The variant factor is ``min(factor * jitter, 0.99)``.
 * ``adaptive=True`` (default off) commits the engine's own smoothed pass rate
   instead of a fixed number. It moves only the ledger; acceptance, guards,
   thresholds and the breaker are untouched. 0.35 is the stock-regime default
@@ -60,7 +66,7 @@ class InjectionConfig:
     # (passes + 4 * first_commit) / (events + 4), starting at first_commit.
     # It changes only the committed p, hence only the ledger, never acceptance.
     adaptive: bool = False
-    rng_salt: int = 0xC4157A11  # separates the injection stream from the main seed
+    seed_offset: int = 10_000_007  # keeps the injection RNG stream apart from the main seed
 
     def __post_init__(self) -> None:
         if self.max_attempts < 0:
@@ -112,7 +118,7 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
         super().__init__(config)
         self.injection = injection or InjectionConfig()
         self.injection_rng = np.random.default_rng(
-            [int(self.config.seed), int(self.injection.rng_salt)]
+            self.config.seed + self.injection.seed_offset
         )
         self.injections: list[dict] = []
         self.injection_score_total = 0.0
@@ -179,8 +185,6 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
                     "mirror_strength": inj.mirror_variant,
                     "passed": bool(ok),
                     "reason": reason,
-                    "brier": brier(p, ok),
-                    "points": calibration_points(p, ok),
                 }
             )
             if ok:
@@ -189,13 +193,21 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
                 break
             p = clamp_p(revise_toward_humility(p))
 
+        truth = passed_candidate is not None
+        p_first = attempts[0]["commit_p"] if attempts else self._first_commit()
+        p_revised = attempts[-1]["commit_p"] if attempts else p_first
+        cal_first = calibration_points(p_first, truth)
+        cal_revised = calibration_points(p_revised, truth)
+        cost = inj.cost_per_variant * len(attempts)
         event = {
             "step": step_index,
             "base_reason": base_reason,
             "attempts": attempts,
-            "passed": passed_candidate is not None,
-            "sampling_cost": inj.cost_per_variant * len(attempts),
-            "score": float(sum(a["points"] for a in attempts)),
+            "passed": truth,
+            "calibration_first": cal_first,
+            "calibration_revised": cal_revised,
+            "sampling_cost": cost,
+            "score": 0.5 * cal_first + 0.5 * cal_revised - cost,
         }
         return event, passed_candidate, passed_mirror
 
