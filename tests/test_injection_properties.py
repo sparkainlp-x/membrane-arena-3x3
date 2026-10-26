@@ -48,8 +48,18 @@ def test_ledger_is_consistent():
             len(event["attempts"]) - 1
         )
         assert event["passed"] == event["attempts"][-1]["passed"]
-        for a in event["attempts"]:
-            assert a["points"] == pytest.approx(calibration_points(a["commit_p"], a["passed"]))
+        # exactly two forecasts are scored per event: first and last commit
+        truth = event["passed"]
+        first = event["attempts"][0]["commit_p"]
+        last = event["attempts"][-1]["commit_p"]
+        assert event["calibration_first"] == pytest.approx(calibration_points(first, truth))
+        assert event["calibration_revised"] == pytest.approx(calibration_points(last, truth))
+        assert event["sampling_cost"] == pytest.approx(0.8 * len(event["attempts"]))
+        assert event["score"] == pytest.approx(
+            0.5 * event["calibration_first"]
+            + 0.5 * event["calibration_revised"]
+            - event["sampling_cost"]
+        )
         total += event["score"]
     assert summary["injection_score_total"] == pytest.approx(total)
     assert summary["injection_passes"] == sum(e["passed"] for e in eng.injections)
@@ -126,3 +136,14 @@ def test_adaptive_is_off_by_default_and_rejects_bad_settings():
         InjectionConfig(adaptive=1)
     with pytest.raises(ValueError):
         InjectionConfig(mirror_variant=0.6)
+
+
+def test_injection_rng_is_seed_plus_offset_with_one_draw_per_attempt():
+    cfg = EngineConfig(steps=200, seed=42)
+    eng = MembraneArena3x3WithInjection(cfg)
+    eng.run()
+    ref = np.random.default_rng(42 + 10_000_007)
+    for event in eng.injections:
+        for k, a in enumerate(event["attempts"]):
+            jitter = ref.uniform(0.8, 1.2)
+            assert a["factor"] == pytest.approx(min(0.5 * 0.5**k * jitter, 0.99))
