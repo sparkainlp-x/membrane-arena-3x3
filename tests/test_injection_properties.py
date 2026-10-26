@@ -84,3 +84,45 @@ def test_summary_runner_and_config_validation():
         InjectionConfig(max_attempts=-1)
     with pytest.raises(ValueError):
         InjectionConfig(first_commit=1.0)
+
+
+def test_adaptive_changes_only_the_ledger_never_acceptance():
+    fixed = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=42)).run()
+    adaptive = MembraneArena3x3WithInjection(
+        EngineConfig(steps=200, seed=42), InjectionConfig(adaptive=True)
+    ).run()
+    assert adaptive["observations"] == fixed["observations"]
+    assert adaptive["steps_executed"] == fixed["steps_executed"]
+    assert adaptive["accepted_steps"] == fixed["accepted_steps"]
+    assert adaptive["status"] == fixed["status"]
+    assert [e["passed"] for e in adaptive["injections"]] == [
+        e["passed"] for e in fixed["injections"]
+    ]
+
+
+def test_adaptive_commit_follows_the_smoothed_formula():
+    eng = MembraneArena3x3WithInjection(
+        EngineConfig(steps=200, seed=42),
+        InjectionConfig(first_commit=0.35, adaptive=True),
+    )
+    summary = eng.run()
+    passes = events = 0
+    for event in eng.injections:
+        expected = (passes + 4 * 0.35) / (events + 4)
+        assert event["attempts"][0]["commit_p"] == pytest.approx(expected)
+        events += 1
+        passes += int(event["passed"])
+    assert summary["adaptive_pass_rate"] == pytest.approx(
+        (passes + 4 * 0.35) / (events + 4)
+    )
+
+
+def test_adaptive_is_off_by_default_and_validated():
+    assert InjectionConfig().adaptive is False
+    assert InjectionConfig().first_commit == 0.35
+    s = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=42)).run()
+    assert s["adaptive_pass_rate"] is None
+    with pytest.raises(ValueError):
+        InjectionConfig(adaptive=1)
+    with pytest.raises(ValueError):
+        InjectionConfig(mirror_variant=0.6)
