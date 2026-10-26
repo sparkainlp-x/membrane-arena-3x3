@@ -79,6 +79,10 @@ Ablation, the same loop with the mirror left at the stock 0.10 (smaller `dt` onl
 | 2 | 8 / 3 | 9 / 4 | 1 of 6 | 81.8 | -316.7 | 12.8 | circuit_breaker_open |
 | 3 | 9 / 4 | 9 / 4 | 0 of 5 | 151.6 | -390.9 | 12.0 | circuit_breaker_open |
 
+### Results and reproduction
+
+The pre-registered analysis (100 confirm seeds per regime, 12 confirmatory tests with Holm correction), the comparison before and after aligning the engine to the author's original, the negative controls and the 50-seed sweep are written up with only measured numbers in [docs/RESULTS-injection.md](docs/RESULTS-injection.md) (protocol and its Amendment A1: [docs/PREREGISTRATION-injection.md](docs/PREREGISTRATION-injection.md)). `make results` regenerates every number in it; `make results-offline` re-renders it from the cached raw runs. A test checks that the committed file equals the generated output.
+
 ### Multi-seed sweep (seeds 0 to 49)
 
 `python scripts/injection_multiseed.py --write` runs 50 seeds (200 steps requested) for the default setting and the dt-only ablation, scores the commit policies under both the engine's two-forecast scoring and the per-attempt scoring, and reports means with 95% bootstrap intervals, pass rates, breaker counts and paired differences against the stock engine. The full tables and the "Honest limits" are in `docs/injection_results.md` (section between the multiseed markers); the raw per-seed runs are in `experiments/results/multiseed_runs.jsonl`. In short, as measured: the injection adds accepted steps (see the paired difference in that table), the breaker still latched in every run, and the sign of a policy's ledger score depends on the scoring rule. It does not cure the arena.
@@ -128,7 +132,7 @@ These are software checks inside a toy model. They are not safety mechanisms for
 pytest -q
 ```
 
-114 tests (63 for the stock arena, 24 for the opt-in injection, 27 for the experiment helpers and the multi-seed script): validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
+127 tests (63 for the stock arena, 64 for the opt-in injection, the experiment helpers, the multi-seed script and the results build): validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
 
 ## Credit
 
