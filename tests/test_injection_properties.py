@@ -49,7 +49,7 @@ def test_ledger_is_consistent():
         )
         assert event["passed"] == event["attempts"][-1]["passed"]
         for a in event["attempts"]:
-            assert a["points"] == pytest.approx(calibration_points(a["p"], a["passed"]))
+            assert a["points"] == pytest.approx(calibration_points(a["commit_p"], a["passed"]))
         total += event["score"]
     assert summary["injection_score_total"] == pytest.approx(total)
     assert summary["injection_passes"] == sum(e["passed"] for e in eng.injections)
@@ -83,4 +83,4 @@ def test_summary_runner_and_config_validation():
     with pytest.raises(ValueError):
         InjectionConfig(max_attempts=-1)
     with pytest.raises(ValueError):
-        InjectionConfig(commit_p=1.0)
+        InjectionConfig(first_commit=1.0)

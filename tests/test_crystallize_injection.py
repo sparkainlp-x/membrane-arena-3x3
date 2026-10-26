@@ -95,7 +95,9 @@ def test_failed_variants_change_nothing():
 def test_scores_are_negative_when_commits_are_overconfident():
     # Default commit 0.75 against a usually-false truth must score below 0:
     # the ledger punishes overconfidence instead of hiding it.
-    eng = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=42))
+    eng = MembraneArena3x3WithInjection(
+        EngineConfig(steps=200, seed=42), InjectionConfig(first_commit=0.75)
+    )
     eng.run()
     assert eng.injection_score_total < 0
     for event in eng.injections:
