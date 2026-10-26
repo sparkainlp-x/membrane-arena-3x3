@@ -47,11 +47,17 @@ def rows(injection: InjectionConfig | None, statuses: list[str]) -> list[str]:
             EngineConfig(steps=STEPS, seed=seed), injection
         )
         statuses.append(inj["status"])
+        s075 = run_simulation_with_injection(
+            EngineConfig(steps=STEPS, seed=seed),
+            InjectionConfig(
+                **{**(vars(injection) if injection else {}), "first_commit": 0.75}
+            ),
+        )["injection_score_total"]
         out.append(
             f"| {seed} | {base['steps_executed']} / {base['accepted_steps']} "
             f"| {inj['steps_executed']} / {inj['accepted_steps']} "
             f"| {inj['injection_passes']} of {inj['injection_events']} "
-            f"| {inj['injection_score_total']:.1f} "
+            f"| {inj['injection_score_total']:.1f} | {s075:.1f} "
             f"| {inj['injection_cost_total']:.1f} | {inj['status']} |"
         )
     return out
@@ -102,15 +108,17 @@ def main() -> None:
     statuses: list[str] = []
     header = (
         "| seed | base steps / accepted | injected steps / accepted "
-        "| injection passes of events | injection score (points) "
-        "| sampling cost | final status |\n|---|---|---|---|---|---|---|"
+        "| injection passes of events | event-score total (commit 0.35) "
+        "| event-score total (commit 0.75) "
+        "| sampling cost | final status |\n|---|---|---|---|---|---|---|---|"
     )
     lines = [
         "# Injection sweep (SYNTHETIC, measured by scripts/injection_sweep.py)",
         "",
         f"Python {platform.python_version()}, NumPy {np.__version__}, "
         f"{STEPS} steps requested, default `InjectionConfig` "
-        "(3 attempts, fixed commit 0.35).",
+        "(3 attempts, fixed commit 0.35). Injection RNG: default_rng(seed + 10000007), "
+        "one uniform(0.8, 1.2) draw per attempt.",
         "",
         "## Default injection (dt shrink + mirror softened to 0.0)",
         "",
@@ -136,7 +144,9 @@ def main() -> None:
         "The injection never changes a guard, threshold or the breaker. "
         f"Injected runs in the first two tables ending with the breaker open: {statuses.count('circuit_breaker_open')} "
         f"of {len(statuses)}; the injection does not cure the arena. 'Injection score' is the sum of Crystallize points "
-        "(100 * (1 - 4 * Brier)) over every variant tried. The commit changes only this ledger. "
+        "(100 * (1 - 4 * Brier)): per event 0.5 * points(first commit) + 0.5 * points(last commit) "
+        "minus 0.8 per variant tried (two forecasts per event, not every variant). "
+        "The commit changes only this ledger. "
         "A fixed commit scores well only where it is near the regime's pass rate; "
         "the adaptive commit tracks the rate but pays a burn-in cost.",
         "",
