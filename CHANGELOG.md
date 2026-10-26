@@ -4,7 +4,10 @@
 
 - Added an opt-in Crystallize injection engine, `membrane_arena_3x3/crystallize_injection.py` (SYNTHETIC classical software). `MembraneArena3x3WithInjection` tries up to 3 variant proposals (smaller `dt`, softened mirror) on a rejected step, validates them with the unmodified `_validate`, and keeps a calibration ledger (Brier score, `100 (1 - 4 Brier)` points, 0.8 cost per variant). It uses its own seeded random stream, `max_attempts=0` is identical to stock, and the stock engine, guards, thresholds, breaker and CLI are unchanged.
 - It does not cure the arena: in the measured sweep (seeds 42, 0, 1, 2, 3) every injected run still latched the breaker, after 9 to 12 steps instead of 8 or 9. See the README section "Crystallize injection (opt-in)" and `docs/injection_results.md`.
-- Added `scripts/injection_sweep.py` and 15 tests (9 supplied contract tests, 6 added properties). 78 tests in total.
+- Renamed the injection settings to `first_commit`, `first_factor` and `mirror_variant`; the default commit is now 0.35 (it was 0.75 earlier in this unreleased PR). The commit changes only the ledger, so the dynamics are unchanged. A variant step factor is capped below 1.
+- Added `InjectionConfig(adaptive=True)` (default off): the first commit of each event is the smoothed pass rate `(passes + 4 * first_commit) / (events + 4)`. It affects only the ledger, never acceptance, guards, thresholds or the breaker. The summary has `adaptive_pass_rate` (None when off).
+- Measured here (SYNTHETIC, one machine): fixed 0.35 is right near the stock pass rate (0.31 over 36 events) and wrong in the evolved-genome regime (about 0.9 pass rate), where an adaptive commit scores positive and ends near 0.87 to 0.91. 0.35 is a stock-regime default only. The injection does not cure the breaker. The phase-damping experiment and evolution fitness figures from the design note are not reproduced here.
+- Added `scripts/injection_sweep.py` and 23 tests (the supplied contract tests, including the adaptive ones, plus added properties). 86 tests in total.
 
 ## 0.1.0 (unreleased)
 
