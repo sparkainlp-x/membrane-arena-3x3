@@ -20,3 +20,6 @@ dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
 include = ["membrane_arena_3x3*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
