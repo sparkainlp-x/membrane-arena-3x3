@@ -92,15 +92,98 @@ def test_failed_variants_change_nothing():
         pytest.skip("no clean failed injection observed in 20 steps")
 
 
-def test_scores_are_negative_when_commits_are_overconfident():
-    # Default commit 0.75 against a usually-false truth must score below 0:
-    # the ledger punishes overconfidence instead of hiding it.
+def test_variant_factors_always_shrink_the_failed_step():
+    # Even with first_factor 0.9, jitter must never push a variant above 1.
     eng = MembraneArena3x3WithInjection(
-        EngineConfig(steps=200, seed=42), InjectionConfig(first_commit=0.75)
+        EngineConfig(steps=200, seed=42),
+        InjectionConfig(first_factor=0.9),
     )
     eng.run()
-    assert eng.injection_score_total < 0
     for event in eng.injections:
-        assert event["sampling_cost"] == pytest.approx(
-            0.8 * len(event["attempts"])
-        )
+        for attempt in event["attempts"]:
+            assert attempt["factor"] < 1.0
+
+
+def test_invalid_injection_config_is_rejected():
+    with pytest.raises(ValueError):
+        InjectionConfig(max_attempts=-1)
+    with pytest.raises(ValueError):
+        InjectionConfig(first_factor=1.5)
+    with pytest.raises(ValueError):
+        InjectionConfig(first_commit=0.0)
+
+
+def test_adaptive_commit_moves_toward_the_measured_rate():
+    # Stock regime, starting overconfident at 0.75: adaptive commits must
+    # drift down toward the ~0.31 empirical rate instead of staying put.
+    eng = MembraneArena3x3WithInjection(
+        EngineConfig(steps=200, seed=42),
+        InjectionConfig(first_commit=0.75, adaptive=True),
+    )
+    eng.run()
+    commits = [e["attempts"][0]["commit_p"] for e in eng.injections]
+    assert len(commits) >= 2
+    assert commits[-1] < commits[0]
+    rate = sum(1 for e in eng.injections if e["passed"]) / len(eng.injections)
+    assert abs(commits[-1] - rate) < abs(commits[0] - rate)
+
+
+def test_adaptive_beats_fixed_when_the_regime_moves():
+    # Evolved genome (pass rate ~0.93): fixed 0.35 is underconfident there,
+    # adaptive must score higher on the same genome and seed.
+    from membrane_arena_3x3.lattice import LatticeConfig
+
+    cfg = EngineConfig(
+        steps=200,
+        seed=42,
+        lattice=LatticeConfig(
+            coupling=0.0339, dephasing=0.2871, mirror_strength=0.1725, dt=0.0128
+        ),
+    )
+    inj = InjectionConfig(first_factor=0.2555, mirror_variant=0.0)
+    fixed = MembraneArena3x3WithInjection(
+        cfg, InjectionConfig(first_factor=0.2555, mirror_variant=0.0)
+    ).run()
+    adaptive = MembraneArena3x3WithInjection(
+        cfg,
+        InjectionConfig(
+            first_factor=0.2555, mirror_variant=0.0, adaptive=True
+        ),
+    ).run()
+    assert adaptive["injection_score_total"] > fixed["injection_score_total"]
+    assert adaptive["adaptive_pass_rate"] > 0.8
+
+
+def test_adaptive_stays_deterministic():
+    a = MembraneArena3x3WithInjection(
+        EngineConfig(steps=200, seed=42),
+        InjectionConfig(adaptive=True),
+    ).run()
+    b = MembraneArena3x3WithInjection(
+        EngineConfig(steps=200, seed=42),
+        InjectionConfig(adaptive=True),
+    ).run()
+    assert a["injections"] == b["injections"]
+
+
+def test_scores_punish_overconfidence_and_reward_calibration():
+    # Explicit 0.75 against a ~0.31 truth must score below 0: the ledger
+    # punishes overconfidence instead of hiding it.
+    over = MembraneArena3x3WithInjection(
+        EngineConfig(steps=200, seed=42), InjectionConfig(first_commit=0.75)
+    )
+    over.run()
+    assert over.injection_score_total < 0
+    # The measured default (0.35, near the 0.31 empirical rate) scores
+    # above zero across seeds 42, 0-3 with identical dynamics: p affects
+    # only the ledger, never acceptance.
+    total = 0.0
+    for seed in (42, 0, 1, 2, 3):
+        eng = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=seed))
+        eng.run()
+        total += eng.injection_score_total
+        for event in eng.injections:
+            assert event["sampling_cost"] == pytest.approx(
+                0.8 * len(event["attempts"])
+            )
+    assert total > 0

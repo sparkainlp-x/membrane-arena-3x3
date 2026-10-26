@@ -21,6 +21,10 @@ Design notes
 * The injection uses its own random stream (``numpy.random.default_rng`` seeded
   from ``[EngineConfig.seed, InjectionConfig.rng_salt]``). The engine's main
   generator is never drawn from, so stock behaviour is unchanged.
+* ``adaptive=True`` (default off) commits the engine's own smoothed pass rate
+  instead of a fixed number. It moves only the ledger; acceptance, guards,
+  thresholds and the breaker are untouched. 0.35 is the stock-regime default
+  only; a fixed value cannot be right in every regime.
 * With ``max_attempts=0`` ``step()`` delegates to the stock implementation.
 * A variant is only committed if ``_validate`` accepts it. Failed variants
   never touch ``lattice.state``.
@@ -36,6 +40,7 @@ from .engine import EngineConfig, MembraneArena3x3
 
 P_MIN = 0.01
 P_MAX = 0.99
+ADAPTIVE_PRIOR_WEIGHT = 4  # pseudo-events of weight on first_commit
 FACTOR_MAX = 0.99  # jitter can never push a variant step above the failed step
 
 
@@ -51,6 +56,10 @@ class InjectionConfig:
     jitter_high: float = 1.2
     mirror_variant: float = 0.0  # softened mirror strength (inside [0, 0.50])
     cost_per_variant: float = 0.8
+    # adaptive=True replaces the fixed first commit with the smoothed pass rate
+    # (passes + 4 * first_commit) / (events + 4), starting at first_commit.
+    # It changes only the committed p, hence only the ledger, never acceptance.
+    adaptive: bool = False
     rng_salt: int = 0xC4157A11  # separates the injection stream from the main seed
 
     def __post_init__(self) -> None:
@@ -68,6 +77,8 @@ class InjectionConfig:
             raise ValueError("need 0 < jitter_low <= jitter_high")
         if self.cost_per_variant < 0:
             raise ValueError("cost_per_variant must be >= 0")
+        if not isinstance(self.adaptive, bool):
+            raise ValueError("adaptive must be a bool")
 
 
 def clamp_p(p: float) -> float:
@@ -106,6 +117,22 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
         self.injections: list[dict] = []
         self.injection_score_total = 0.0
         self.injection_cost_total = 0.0
+        self._adaptive_events = 0
+        self._adaptive_passes = 0
+
+    def _first_commit(self) -> float:
+        """Committed p for the first variant of an event.
+
+        Fixed ``first_commit``, or with ``adaptive`` the smoothed pass rate
+        (passes + w * first_commit) / (events + w) over earlier events.
+        """
+        inj = self.injection
+        if not inj.adaptive:
+            return clamp_p(inj.first_commit)
+        return clamp_p(
+            (self._adaptive_passes + ADAPTIVE_PRIOR_WEIGHT * inj.first_commit)
+            / (self._adaptive_events + ADAPTIVE_PRIOR_WEIGHT)
+        )
 
     def _propose_with_dt_factor(
         self, dt_factor: float, mirror_value: float, signal: float = 0.0
@@ -128,7 +155,7 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
     def _inject(self, step_index: int, signal: float, base_reason: str):
         """Try variants after a rejection. Returns (event, candidate or None, mirror)."""
         inj = self.injection
-        p = clamp_p(inj.first_commit)
+        p = self._first_commit()
         attempts: list[dict] = []
         passed_candidate = None
         passed_mirror = None
@@ -204,6 +231,8 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
             self.injections.append(event)
             self.injection_score_total += event["score"]
             self.injection_cost_total += event["sampling_cost"]
+            self._adaptive_events += 1
+            self._adaptive_passes += int(event["passed"])
             if variant is not None:
                 candidate, accepted, reason, injected = variant, True, "ok", True
                 action.mirror_strength = mirror  # log the value actually used
@@ -240,6 +269,9 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
         out["injection_passes"] = sum(1 for e in self.injections if e["passed"])
         out["injection_score_total"] = self.injection_score_total
         out["injection_cost_total"] = self.injection_cost_total
+        out["adaptive_pass_rate"] = (
+            self._first_commit() if self.injection.adaptive else None
+        )
         out["injections"] = self.injections
         return out
 
