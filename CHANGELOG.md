@@ -8,6 +8,7 @@
 - Added `InjectionConfig(adaptive=True)` (default off): the first commit of each event is the smoothed pass rate `(passes + 4 * first_commit) / (events + 4)`. It affects only the ledger, never acceptance, guards, thresholds or the breaker. The summary has `adaptive_pass_rate` (None when off).
 - Measured here (SYNTHETIC, one machine): fixed 0.35 is right near the stock pass rate (0.31 over 36 events) and wrong in the evolved-genome regime (about 0.9 pass rate), where an adaptive commit scores positive and ends near 0.87 to 0.91. 0.35 is a stock-regime default only. The injection does not cure the breaker. The phase-damping experiment and evolution fitness figures from the design note are not reproduced here.
 - Added `scripts/injection_sweep.py` and 23 tests (the supplied contract tests, including the adaptive ones, plus added properties). 86 tests in total.
+- Added `experiments/` (not installed with the package), `docs/PREREGISTRATION-injection.md` and `docs/RESULTS-injection.md`: a pre-registered comparison of commit policies, a reconciliation with the design note, a true phase damping experiment and negative controls. 29 tests added (115 in total). No change to the model, the guards, the defaults or the installed package.
 
 ## 0.1.0 (unreleased)
 
