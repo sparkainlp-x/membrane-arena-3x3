@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added an opt-in Crystallize injection engine, `membrane_arena_3x3/crystallize_injection.py` (SYNTHETIC classical software). `MembraneArena3x3WithInjection` tries up to 3 variant proposals (smaller `dt`, softened mirror) on a rejected step, validates them with the unmodified `_validate`, and keeps a calibration ledger (Brier score, `100 (1 - 4 Brier)` points, 0.8 cost per variant). It uses its own seeded random stream, `max_attempts=0` is identical to stock, and the stock engine, guards, thresholds, breaker and CLI are unchanged.
+- It does not cure the arena: in the measured sweep (seeds 42, 0, 1, 2, 3) every injected run still latched the breaker, after 9 to 12 steps instead of 8 or 9. See the README section "Crystallize injection (opt-in)" and `docs/injection_results.md`.
+- Added `scripts/injection_sweep.py` and 15 tests (9 supplied contract tests, 6 added properties). 78 tests in total.
+
 ## 0.1.0 (unreleased)
 
 - First version: a 3x3 lattice of 32-dimensional density-matrix cells, a read-only Yang Observer, a bounded Yin Calibrator with an optional sinusoid, transactional all-or-nothing updates, a circuit breaker and a command-line entry point. Started from a pasted specification and code, committed unchanged first.
