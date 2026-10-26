@@ -154,6 +154,16 @@ def main() -> None:
     text = "\n".join(lines)
     print(text)
     if args.write:
+        # Keep the multi-seed section written by scripts/injection_multiseed.py, if present.
+        try:
+            with open(args.write, encoding="utf-8") as fh:
+                old = fh.read()
+        except FileNotFoundError:
+            old = ""
+        begin, end = "<!-- multiseed:start -->", "<!-- multiseed:end -->"
+        if begin in old and end in old:
+            block = old[old.index(begin) : old.index(end) + len(end)]
+            text = text.rstrip("\n") + "\n\n" + block + "\n"
         with open(args.write, "w", encoding="utf-8") as fh:
             fh.write(text)
 

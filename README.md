@@ -79,6 +79,10 @@ Ablation, the same loop with the mirror left at the stock 0.10 (smaller `dt` onl
 | 2 | 8 / 3 | 9 / 4 | 1 of 6 | 81.8 | -316.7 | 12.8 | circuit_breaker_open |
 | 3 | 9 / 4 | 9 / 4 | 0 of 5 | 151.6 | -390.9 | 12.0 | circuit_breaker_open |
 
+### Multi-seed sweep (seeds 0 to 49)
+
+`python scripts/injection_multiseed.py --write` runs 50 seeds (200 steps requested) for the default setting and the dt-only ablation, scores the commit policies under both the engine's two-forecast scoring and the per-attempt scoring, and reports means with 95% bootstrap intervals, pass rates, breaker counts and paired differences against the stock engine. The full tables and the "Honest limits" are in `docs/injection_results.md` (section between the multiseed markers); the raw per-seed runs are in `experiments/results/multiseed_runs.jsonl`. In short, as measured: the injection adds accepted steps (see the paired difference in that table), the breaker still latched in every run, and the sign of a policy's ledger score depends on the scoring rule. It does not cure the arena.
+
 ### Commit policy and regime dependence
 
 The commit never changes acceptance, so the dynamics are identical under every policy; only the ledger differs. The table below is the stock regime, measured on this machine (SYNTHETIC). Scores are event-score totals in points (two forecasts per event, minus 0.8 per variant).
@@ -92,7 +96,7 @@ The commit never changes acceptance, so the dynamics are identical under every p
 | 3 | 11 / 6 | 2 of 7 | -242.5 | 12.0 | -25.3 | -74.0 | 0.309 |
 | total | | | -1215.0 | 68.0 | -127.9 | -404.6 | |
 
-The pass rate over these 36 events is 11 of 36 (0.31). A fixed 0.35 sits close to that rate and scores positive (+68.0 in total); a fixed 0.75 is overconfident and scores -1215.0. The 0.35 default was set from these same seeds, so its score here is in-sample, not a held-out result. The adaptive commit scores below the fixed 0.35 in this regime because it starts without knowing the rate (a burn-in cost); its value is that it does not need the rate in advance. Started from 0.75 it scores better than fixed 0.75 (-404.6 against -1215.0), but the total is still negative on this short run.
+The pass rate over these 36 events is 11 of 36 (0.31). A fixed 0.35 sits close to that rate and scores positive on these five seeds (+68.0 in total); a fixed 0.75 is overconfident and scores -1215.0. The 0.35 default was set from these same seeds, so that score is in-sample, not a held-out result, and it does not hold up on more seeds: over seeds 0 to 49 the mean two-forecast score of a fixed 0.35 is -5.0 per run with a 95% interval that includes zero, and on the 100 disjoint confirm seeds of the pre-registered analysis it is +11.2 per run with an interval that also includes zero (see the multi-seed section below and `experiments/results/prereg_tables.md`), although its first-forecast Brier score is far better than that of a fixed 0.75. The adaptive commit scores below the fixed 0.35 in this regime because it starts without knowing the rate (a burn-in cost); its value is that it does not need the rate in advance. Started from 0.75 it scores better than fixed 0.75 (-404.6 against -1215.0), but the total is still negative on this short run.
 
 **0.35 is a default for the stock regime only.** Under a different parameter set the pass rate differs, and a fixed default cannot be right in every regime. Using the genome supplied with the design note (coupling 0.0339, dephasing 0.2871, mirror_strength 0.1725, dt 0.0128, `first_factor` 0.2555, `mirror_variant` 0.0; seeds 42, 0, 1), measured here:
 
@@ -124,7 +128,7 @@ These are software checks inside a toy model. They are not safety mechanisms for
 pytest -q
 ```
 
-87 tests (63 for the stock arena, 24 for the opt-in injection): validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
+114 tests (63 for the stock arena, 24 for the opt-in injection, 27 for the experiment helpers and the multi-seed script): validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
 
 ## Credit
 
