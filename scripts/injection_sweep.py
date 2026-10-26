@@ -70,7 +70,7 @@ def main() -> None:
         "## Ablation: dt shrink only (mirror left at the stock 0.10)",
         "",
         header,
-        *rows(InjectionConfig(mirror_value=0.10), statuses),
+        *rows(InjectionConfig(mirror_variant=0.10), statuses),
         "",
         "The injection never changes a guard, threshold or the breaker. "
         f"Injected runs ending with the breaker open: {statuses.count('circuit_breaker_open')} "

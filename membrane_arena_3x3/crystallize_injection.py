@@ -5,7 +5,7 @@ The stock engine retries an identical proposal after a rejection (README,
 step only, tries up to ``max_attempts`` *variant* proposals using a small
 commit -> sample -> revise -> score loop (the Crystallize calibration loop):
 
-1. Commit: state a probability ``p`` that a shrunk variant will pass the guards.
+1. Commit: state a probability ``p`` (``first_commit``) that a shrunk variant will pass the guards.
 2. Sample: build the variant (smaller ``dt``, softened mirror) and validate it
    with the engine's own, unmodified ``_validate``.
 3. Revise: after a miss, move ``p`` halfway toward 0.5 and shrink the step again.
@@ -36,6 +36,7 @@ from .engine import EngineConfig, MembraneArena3x3
 
 P_MIN = 0.01
 P_MAX = 0.99
+FACTOR_MAX = 0.99  # jitter can never push a variant step above the failed step
 
 
 @dataclass
@@ -43,22 +44,26 @@ class InjectionConfig:
     """Settings for the injection loop. Defaults follow the design notes."""
 
     max_attempts: int = 3  # variants tried per rejected step; 0 = stock behaviour
-    commit_p: float = 0.75  # initial committed probability that a variant passes
-    dt_factor: float = 0.5  # first variant uses dt * dt_factor * jitter
+    first_commit: float = 0.35  # committed probability that a variant passes (ledger only)
+    first_factor: float = 0.5  # first variant uses dt * first_factor * jitter
     dt_shrink: float = 0.5  # each further attempt shrinks the step by this factor
     jitter_low: float = 0.8
     jitter_high: float = 1.2
-    mirror_value: float = 0.0  # softened mirror strength (inside [0, 0.50])
+    mirror_variant: float = 0.0  # softened mirror strength (inside [0, 0.50])
     cost_per_variant: float = 0.8
     rng_salt: int = 0xC4157A11  # separates the injection stream from the main seed
 
     def __post_init__(self) -> None:
         if self.max_attempts < 0:
             raise ValueError("max_attempts must be >= 0")
-        if not 0.0 < self.commit_p < 1.0:
-            raise ValueError("commit_p must be in (0, 1)")
-        if not self.dt_factor > 0 or not self.dt_shrink > 0:
-            raise ValueError("dt_factor and dt_shrink must be > 0")
+        if not 0.0 < self.first_commit < 1.0:
+            raise ValueError("first_commit must be in (0, 1)")
+        if not 0.0 < self.first_factor < 1.0:
+            raise ValueError("first_factor must be in (0, 1)")
+        if not self.dt_shrink > 0:
+            raise ValueError("dt_shrink must be > 0")
+        if not 0.0 <= self.mirror_variant <= 0.50:
+            raise ValueError("mirror_variant must be in [0, 0.50]")
         if not 0 < self.jitter_low <= self.jitter_high:
             raise ValueError("need 0 < jitter_low <= jitter_high")
         if self.cost_per_variant < 0:
@@ -123,7 +128,7 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
     def _inject(self, step_index: int, signal: float, base_reason: str):
         """Try variants after a rejection. Returns (event, candidate or None, mirror)."""
         inj = self.injection
-        p = clamp_p(inj.commit_p)
+        p = clamp_p(inj.first_commit)
         attempts: list[dict] = []
         passed_candidate = None
         passed_mirror = None
@@ -132,17 +137,19 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
             jitter = float(
                 self.injection_rng.uniform(inj.jitter_low, inj.jitter_high)
             )
-            factor = inj.dt_factor * (inj.dt_shrink**k) * jitter
+            factor = min(
+                inj.first_factor * (inj.dt_shrink**k) * jitter, FACTOR_MAX
+            )
             candidate = self._propose_with_dt_factor(
-                factor, inj.mirror_value, signal
+                factor, inj.mirror_variant, signal
             )
             ok, reason = self._validate(candidate)
             attempts.append(
                 {
                     "attempt": k + 1,
-                    "p": p,
-                    "dt_factor": factor,
-                    "mirror_strength": inj.mirror_value,
+                    "commit_p": p,
+                    "factor": factor,
+                    "mirror_strength": inj.mirror_variant,
                     "passed": bool(ok),
                     "reason": reason,
                     "brier": brier(p, ok),
@@ -151,7 +158,7 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
             )
             if ok:
                 passed_candidate = candidate
-                passed_mirror = inj.mirror_value
+                passed_mirror = inj.mirror_variant
                 break
             p = clamp_p(revise_toward_humility(p))
 
