@@ -89,8 +89,8 @@ These are properties of the model as published, not bugs that were fixed. Statem
 
 **SYNTHETIC classical software; no physical claim.** Known limit 1 says the stock engine retries the identical proposal after a rejection. `MembraneArena3x3WithInjection` (in `membrane_arena_3x3/crystallize_injection.py`) is an opt-in subclass that, on a rejected step only, tries up to `max_attempts` (default 3) variant proposals before counting the failure:
 
-1. **Commit** a probability `p` (default 0.75) that a shrunk variant passes the guards.
-2. **Sample** a variant: `dt` times 0.5 (jittered 0.8 to 1.2 from a dedicated seeded random stream, so the main generator is never touched) and the mirror strength softened to 0.0.
+1. **Commit** a probability `p` (`first_commit`, default 0.35) that a shrunk variant passes the guards. With `adaptive=True` (default off) the first commit of each event is instead the smoothed pass rate `(passes + 4 * first_commit) / (events + 4)` over earlier events, starting at `first_commit`. The commit changes only the ledger, never whether a step is accepted.
+2. **Sample** a variant: `dt` times `first_factor` (default 0.5, jittered 0.8 to 1.2 from a dedicated seeded random stream, so the main generator is never touched) and the mirror strength softened to `mirror_variant` (default 0.0). The variant factor is capped below 1.
 3. **Validate** it with the engine's own, unmodified `_validate`. Only a variant that passes is committed (and logged as an accepted step); a failed variant leaves the lattice unchanged.
 4. **Revise** after a miss: `p` moves halfway toward 0.5 and the step shrinks again (by 0.5 per attempt).
 5. **Score** with the Crystallize formulas: Brier = (p - truth)^2, points = 100 (1 - 4 Brier), where truth is whether the variant passed. Each variant costs 0.8 in the ledger.
@@ -105,29 +105,57 @@ summary["injection_passes"], summary["injection_score_total"], summary["injectio
 
 With `InjectionConfig(max_attempts=0)` the subclass delegates to the stock `step()` and behaves exactly like the stock engine. The stock `MembraneArena3x3`, the CLI and the package exports are unchanged.
 
-**What it does NOT do:** it does **not** cure the arena. It never changes a guard, a threshold, a parameter bound or the circuit breaker, and every injected run below still ends with the breaker open; it adds a few steps and a calibration ledger. The negative scores are the ledger working: a commit of 0.75 against a usually-false outcome is overconfident, and the Brier score says so.
+**What it does NOT do:** it does **not** cure the arena. It never changes a guard, a threshold, a parameter bound or the circuit breaker, and every injected run below still ends with the breaker open; it adds a few steps and a calibration ledger. The ledger is meant to expose miscalibration: a fixed commit of 0.75 against a usually-false outcome is overconfident and scores negative, and the Brier score says so.
 
-Measured on one machine by `scripts/injection_sweep.py` (also written to `docs/injection_results.md`), 200 steps requested, default settings:
+Measured on one machine (Python 3.12, NumPy 2.5.4) by `scripts/injection_sweep.py` (also written to `docs/injection_results.md`), 200 steps requested, default settings (fixed commit 0.35):
 
 | seed | base steps / accepted | injected steps / accepted | injection passes of events | injection score (points) | sampling cost | final status |
 |---|---|---|---|---|---|---|
-| 42 | 8 / 3 | 11 / 6 | 3 of 8 | -970.3 | 15.2 | circuit_breaker_open |
-| 0 | 9 / 4 | 10 / 5 | 1 of 6 | -1120.3 | 13.6 | circuit_breaker_open |
-| 1 | 8 / 3 | 9 / 4 | 1 of 6 | -964.1 | 12.8 | circuit_breaker_open |
-| 2 | 8 / 3 | 12 / 7 | 4 of 9 | -1128.1 | 17.6 | circuit_breaker_open |
-| 3 | 9 / 4 | 11 / 6 | 2 of 7 | -889.1 | 13.6 | circuit_breaker_open |
+| 42 | 8 / 3 | 11 / 6 | 3 of 8 | 346.7 | 15.2 | circuit_breaker_open |
+| 0 | 9 / 4 | 10 / 5 | 1 of 6 | 484.7 | 13.6 | circuit_breaker_open |
+| 1 | 8 / 3 | 9 / 4 | 1 of 6 | 396.9 | 12.8 | circuit_breaker_open |
+| 2 | 8 / 3 | 12 / 7 | 4 of 9 | 409.9 | 17.6 | circuit_breaker_open |
+| 3 | 9 / 4 | 11 / 6 | 2 of 7 | 327.9 | 13.6 | circuit_breaker_open |
 
 Ablation, the same loop with the mirror left at the stock 0.10 (smaller `dt` only):
 
 | seed | base steps / accepted | injected steps / accepted | injection passes of events | injection score (points) | sampling cost | final status |
 |---|---|---|---|---|---|---|
-| 42 | 8 / 3 | 9 / 4 | 1 of 6 | -964.1 | 12.8 | circuit_breaker_open |
-| 0 | 9 / 4 | 9 / 4 | 0 of 5 | -1039.1 | 12.0 | circuit_breaker_open |
-| 1 | 8 / 3 | 9 / 4 | 1 of 6 | -1196.9 | 14.4 | circuit_breaker_open |
-| 2 | 8 / 3 | 9 / 4 | 1 of 6 | -964.1 | 12.8 | circuit_breaker_open |
-| 3 | 9 / 4 | 9 / 4 | 0 of 5 | -1039.1 | 12.0 | circuit_breaker_open |
+| 42 | 8 / 3 | 9 / 4 | 1 of 6 | 396.9 | 12.8 | circuit_breaker_open |
+| 0 | 9 / 4 | 9 / 4 | 0 of 5 | 465.9 | 12.0 | circuit_breaker_open |
+| 1 | 8 / 3 | 9 / 4 | 1 of 6 | 529.1 | 14.4 | circuit_breaker_open |
+| 2 | 8 / 3 | 9 / 4 | 1 of 6 | 396.9 | 12.8 | circuit_breaker_open |
+| 3 | 9 / 4 | 9 / 4 | 0 of 5 | 465.9 | 12.0 | circuit_breaker_open |
 
-These numbers describe this synthetic model and these defaults only. Regenerate them with `python scripts/injection_sweep.py`.
+### Commit policy and regime dependence
+
+The commit never changes acceptance, so the dynamics are identical under every policy; only the ledger differs. The table below is the stock regime, measured on this machine (SYNTHETIC). Scores are in points, summed over all variants tried.
+
+| seed | steps / accepted | passes of events | fixed 0.75 | fixed 0.35 | adaptive from 0.35 | adaptive from 0.75 | adaptive final commit (from 0.35) |
+|---|---|---|---|---|---|---|---|
+| 42 | 11 / 6 | 3 of 8 | -970.3 | 346.7 | -115.1 | -727.4 | 0.367 |
+| 0 | 10 / 5 | 1 of 6 | -1120.3 | 484.7 | 448.1 | -485.2 | 0.240 |
+| 1 | 9 / 4 | 1 of 6 | -964.1 | 396.9 | 360.3 | -328.9 | 0.240 |
+| 2 | 12 / 7 | 4 of 9 | -1128.1 | 409.9 | -368.3 | -1108.2 | 0.415 |
+| 3 | 11 / 6 | 2 of 7 | -889.1 | 327.9 | 109.6 | -443.0 | 0.309 |
+| total | | | -5071.9 | 1966.1 | 434.5 | -3092.7 | |
+
+The pass rate over these 36 events is 11 of 36 (0.31). A fixed 0.35 sits close to that rate and scores positive; a fixed 0.75 is overconfident and scores negative. The 0.35 default was set from these same seeds, so its score here is in-sample, not a held-out result. The adaptive commit scores below the fixed 0.35 in this regime because it starts without knowing the rate (a burn-in cost); its value is that it does not need the rate in advance. Started from 0.75 it ends well below 0.75 and scores better than fixed 0.75, but the total is still negative on this short run.
+
+**0.35 is a default for the stock regime only.** Under a different parameter set the pass rate differs, and a fixed default cannot be right in every regime. Using the genome supplied with the design note (coupling 0.0339, dephasing 0.2871, mirror_strength 0.1725, dt 0.0128, `first_factor` 0.2555, `mirror_variant` 0.0; seeds 42, 0, 1), measured here:
+
+| seed | steps / accepted | passes of events | fixed 0.75 | fixed 0.35 | adaptive from 0.35 | adaptive from 0.75 | adaptive final commit (from 0.35) |
+|---|---|---|---|---|---|---|---|
+| 42 | 59 / 54 | 51 of 56 | 2553.1 | -2920.9 | 2016.3 | 2435.5 | 0.873 |
+| 0 | 86 / 81 | 79 of 84 | 4420.3 | -4720.7 | 4183.3 | 4658.3 | 0.914 |
+| 1 | 56 / 51 | 48 of 53 | 2171.9 | -2626.1 | 1458.2 | 1842.5 | 0.867 |
+| total | | | 9145.3 | -10267.7 | 7657.9 | 8936.3 | |
+
+In that regime about 0.9 of the variants pass. A fixed 0.35 is underconfident and scores negative; the adaptive commit from 0.35 ends near 0.87 to 0.91 and scores positive. A fixed 0.75 scores higher than the adaptive commit from 0.35 here, because 0.75 happens to be closer to the true rate than 0.35 is, so the adaptive commit is not the best choice in every case; it is the choice that needs no tuning. The breaker still latched in all three evolved-genome runs. This is a result for these three seeds only; the genome was supplied with a design note and was not re-evolved here.
+
+**Not reproduced here.** The design note also describes a true phase-damping experiment and fitness values from the evolution run (fitness, mean executed and accepted counts, a held-out seed result). The phase-damping code was not supplied and the fitness function was not available, so neither is part of this repository and no claim is made about them. The injection does not cure the breaker in any regime measured here.
+
+These numbers describe this synthetic model and these settings only. Regenerate them with `python scripts/injection_sweep.py`.
 
 ## Guard rules
 
@@ -144,7 +172,7 @@ These are software checks inside a toy model. They are not safety mechanisms for
 pytest -q
 ```
 
-78 tests (63 for the stock arena, 15 for the opt-in injection): validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
+86 tests (63 for the stock arena, 23 for the opt-in injection): validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
 
 ## Credit
 
