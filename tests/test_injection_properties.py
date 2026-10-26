@@ -117,7 +117,7 @@ def test_adaptive_commit_follows_the_smoothed_formula():
     )
 
 
-def test_adaptive_is_off_by_default_and_validated():
+def test_adaptive_is_off_by_default_and_rejects_bad_settings():
     assert InjectionConfig().adaptive is False
     assert InjectionConfig().first_commit == 0.35
     s = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=42)).run()
