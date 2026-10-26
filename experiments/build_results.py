@@ -17,6 +17,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -95,6 +96,14 @@ def render() -> str:
         "in every regime. FT (fixed at the dev pass rate) is the benchmark that knows the rate in advance. "
         f"In the stock regime the adaptive rule's first-forecast Brier is {'higher' if c7['mean'] > 0 else 'lower'} "
         "than that of the fixed 0.35 commit (C7), which is the burn-in cost of not knowing the rate in advance."
+    )
+    # The sweep text embeds the interpreter versions of the machine that renders it; the
+    # raw runs were collected in the session recorded in prereg_results.json, so use those.
+    multiseed_block = re.sub(
+        r"on Python \S+, NumPy \S+,",
+        f"on Python {env['python']}, NumPy {env['numpy']},",
+        ms.render(runs).replace("## Multi-seed sweep", "### Multi-seed sweep", 1).replace("\n### ", "\n#### "),
+        count=1,
     )
     L = [
         "# Results: Crystallize injection (SYNTHETIC)",
@@ -240,7 +249,7 @@ def render() -> str:
         "[injection_results.md](injection_results.md). Raw per-seed runs: "
         "[../experiments/results/multiseed_runs.jsonl](../experiments/results/multiseed_runs.jsonl).",
         "",
-        ms.render(runs).replace("## Multi-seed sweep", "### Multi-seed sweep", 1).replace("\n### ", "\n#### "),
+        multiseed_block,
         "",
         "## 6. Before and after the engine alignment",
         "",
