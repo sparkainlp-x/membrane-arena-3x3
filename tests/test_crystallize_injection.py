@@ -31,14 +31,34 @@ def test_revision_moves_halfway_to_humility():
 
 
 def test_injection_extends_default_runs_without_changing_guards():
-    base = MembraneArena3x3(EngineConfig(steps=200, seed=42)).run()
-    inj = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=42)).run()
+    # With the stock engine's adaptive retry OFF, the injection still
+    # extends the run exactly as originally measured (8 -> 11 steps).
+    base = MembraneArena3x3(
+        EngineConfig(steps=200, seed=42, adaptive_retry=False)
+    ).run()
+    inj = MembraneArena3x3WithInjection(
+        EngineConfig(steps=200, seed=42, adaptive_retry=False)
+    ).run()
     assert base["steps_executed"] == 8
     assert inj["steps_executed"] > base["steps_executed"]
     assert inj["accepted_steps"] > base["accepted_steps"]
     assert inj["injection_passes"] >= 1
     # The breaker still latches eventually: the injection measures the
     # structural problem, it does not cure it.
+    assert inj["status"] == "circuit_breaker_open"
+
+
+def test_stock_adaptive_retry_subsumes_the_injection_on_seed_42():
+    # Measured, seed 42, 200 steps, retry ON (the default): the stock
+    # run reaches 12 steps / 7 accepted and the injected run 11 / 6.
+    # The injection no longer extends the stock run, because the
+    # stock retry now does the same repair work the injection did.
+    # This is a measured change in the injection's value, not a
+    # failure of either engine: both still latch the breaker.
+    base = MembraneArena3x3(EngineConfig(steps=200, seed=42)).run()
+    inj = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=42)).run()
+    assert base["steps_executed"] == 12 and base["accepted_steps"] == 7
+    assert inj["steps_executed"] == 11 and inj["accepted_steps"] == 6
     assert inj["status"] == "circuit_breaker_open"
 
 

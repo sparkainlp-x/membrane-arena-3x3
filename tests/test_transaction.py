@@ -30,7 +30,14 @@ def partly_bad_candidate(arena):
 
 def test_one_invalid_cell_rejects_the_entire_update(monkeypatch):
     arena = MembraneArena3x3(EngineConfig(seed=8))
-    monkeypatch.setattr(arena.lattice, "propose_step", lambda signal=0.0: partly_bad_candidate(arena))
+    # The mock stands in for the lattice, so it must accept the
+    # propose_step overrides the retry layer now passes (dt, mirror,
+    # coupling); it ignores them and always returns the bad candidate.
+    monkeypatch.setattr(
+        arena.lattice,
+        "propose_step",
+        lambda signal=0.0, **kwargs: partly_bad_candidate(arena),
+    )
     before = snapshot(arena)
 
     result = arena.step()
@@ -43,12 +50,19 @@ def test_one_invalid_cell_rejects_the_entire_update(monkeypatch):
 
 
 def test_each_guard_rejects_without_touching_the_state(monkeypatch):
-    for attribute, value, expected in [
-        ("residual_target", -1.0, "residual_above_target"),
-        ("divergence_max", -1.0, "divergence_above_maximum"),
+    # Thresholds live in GuardConfig (the observer's plain attributes
+    # are read-only mirrors of it), so the guard is set through the
+    # engine config, not by patching the observer after construction.
+    from membrane_arena_3x3.shields import GuardConfig
+
+    # GuardConfig validation forbids negative thresholds, so the
+    # forcing values are the smallest valid ones: any real residual
+    # exceeds 1e-9, and any real divergence exceeds a 1e-9 maximum.
+    for kwargs, expected in [
+        ({"residual_target": 1e-9}, "residual_above_target"),
+        ({"divergence_min": 0.0, "divergence_max": 1e-9}, "divergence_above_maximum"),
     ]:
-        arena = MembraneArena3x3(EngineConfig(seed=8))
-        setattr(arena.observer, attribute, value)
+        arena = MembraneArena3x3(EngineConfig(seed=8, guards=GuardConfig(**kwargs)))
         before = snapshot(arena)
         result = arena.step()
         assert (result["status"], result["reason"]) == ("rejected", expected)

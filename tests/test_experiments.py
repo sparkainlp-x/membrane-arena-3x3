@@ -45,7 +45,9 @@ def test_the_commit_policy_never_changes_the_dynamics():
 
 def test_collect_run_shape():
     r = collect_run("stock", 42)
-    assert r["steps"] == 11 and r["accepted"] == 6 and r["stock_steps"] == 8
+    # The injected run is unchanged (11 steps, 6 accepted); only the
+    # stock run moved, from 8 to 12 steps, because it now retries.
+    assert r["steps"] == 11 and r["accepted"] == 6 and r["stock_steps"] == 12
     assert sum(1 for _, p in r["events"] if p) == 3
 
 

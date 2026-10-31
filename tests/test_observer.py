@@ -18,7 +18,7 @@ def test_observer_accepts_locked_arrays_and_leaves_them_identical():
     observation = arena.observer.observe(state, reference, 0)
 
     assert (state.tobytes(), reference.tobytes()) == before
-    assert 0.0 < observation.min_purity <= observation.mean_coherence <= 1.0
+    assert 0.0 < observation.min_purity <= observation.mean_purity <= 1.0
 
 
 def test_observer_does_not_unlock_or_alias_the_callers_array():

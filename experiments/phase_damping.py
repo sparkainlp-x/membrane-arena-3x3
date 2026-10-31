@@ -40,7 +40,10 @@ class PhaseDampingLattice(MembraneLattice):
 
     damping = staticmethod(off_diagonal_damping)
 
-    def propose_step(self, calibrator_signal: float = 0.0) -> np.ndarray:
+    def propose_step(self, calibrator_signal: float = 0.0, **_overrides) -> np.ndarray:
+        # The engine's retry layer passes dt/mirror/coupling overrides;
+        # this experiment's damping uses the lattice config's own
+        # values, so overrides are accepted and ignored here.
         cfg = self.config
         candidate = np.empty_like(self.state)
         for i in range(3):

@@ -20,12 +20,12 @@ def test_total_signal_is_always_within_the_bound():
     shield = YinCalibratorShield(max_signal=0.05)
     extreme = Observation(
         step=1,
-        mean_coherence=0.0,
+        mean_purity=0.0,
         max_divergence=1.0,
         max_residual=5.0,
         min_purity=0.0,
         mean_entropy=1.0,
-        lyapunov_proxy=9.0,
+        stability_penalty=9.0,
     )
     for step in range(50):
         action = shield.propose(extreme, step, True, 7.83, 10.0, 0.05)
