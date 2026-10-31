@@ -33,7 +33,11 @@ def test_breaker_opens_at_exactly_the_failure_limit_and_stops_updates():
 
 
 def test_breaker_stays_closed_below_the_limit():
-    arena = MembraneArena3x3(EngineConfig(steps=2, seed=5, failure_limit=3))
+    # Retry off here so each forced outcome maps 1:1 to a step; the
+    # retry layer's own counting is pinned in test_scientific_upgrade.
+    arena = MembraneArena3x3(
+        EngineConfig(steps=2, seed=5, failure_limit=3, adaptive_retry=False)
+    )
     force_failures(arena, [(False, "forced")] * 2)
     result = arena.run()
     assert result["status"] == "completed"
@@ -41,7 +45,11 @@ def test_breaker_stays_closed_below_the_limit():
 
 
 def test_an_accepted_update_resets_the_consecutive_failure_count():
-    arena = MembraneArena3x3(EngineConfig(steps=7, seed=5, failure_limit=3))
+    # Retry off here so each forced outcome maps 1:1 to a step; the
+    # retry layer's own counting is pinned in test_scientific_upgrade.
+    arena = MembraneArena3x3(
+        EngineConfig(steps=7, seed=5, failure_limit=3, adaptive_retry=False)
+    )
     force_failures(
         arena,
         [(False, "x"), (False, "x"), (True, "ok"), (False, "x"), (False, "x"), (True, "ok"), (False, "x")],

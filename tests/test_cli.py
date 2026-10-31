@@ -11,11 +11,15 @@ SUMMARY_KEYS = {
     "steps_executed",
     "accepted_steps",
     "rejected_steps",
-    "final_mean_coherence",
+    "final_mean_purity",
     "final_max_divergence",
     "final_max_residual",
     "final_min_purity",
-    "final_lyapunov_proxy",
+    "final_stability_penalty",
+    "final_mean_off_diagonal_coherence",
+    "guards",
+    "operator_mode",
+    "repair_accepts",
 }
 
 
