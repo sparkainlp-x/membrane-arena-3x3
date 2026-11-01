@@ -91,9 +91,12 @@ combined solver or physical quantum channel.
 
 Integration prerequisites are tested conditionally in
 `tests/test_mirror_reference_integration.py`: legacy-strength matching,
-composition, and RHS/entropy derivative checks use the PR module if available;
-without it the integration test is skipped with the dependency named. Before
-claiming convergence, separately measure dt dependence of unitary, dephasing,
+composition, degenerate/rank-deficient states, finite-difference RHS and entropy
+derivatives, entropy nonincrease, invalid-input rejection, and overflow/
+roundoff behavior use the PR module if available. Without it these integration
+tests are skipped with the dependency named; PR #10's own tests and the
+integration contract have not been executed from this branch. Before claiming
+convergence, separately measure dt dependence of unitary, dephasing,
 interaction, calibration, projection, and their operator splitting.
 
 ## Experimental design and held-out discipline
