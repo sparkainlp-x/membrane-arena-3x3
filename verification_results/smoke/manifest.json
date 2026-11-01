@@ -1,14 +1,14 @@
 {
   "command": "/usr/bin/python scripts/scientific_verification.py --config verification_configs/smoke.json --out-dir verification_results/smoke --split all",
   "commit_and_dirty_state": {
-    "commit": "a04e7450d8f4aa87c5254af055397222f711f945",
+    "commit": "1aa54df23ecb1222b7503210c39470bb66f97cf8",
     "dirty": false
   },
   "configuration_sha256": "5447b0b47f68b3b89bd3d8bbb1bd6118a9cad890bd798e0e6fe1ae8db9123322",
   "held_out_freeze_check": null,
   "numpy_version": "2.5.4",
   "profile": "smoke",
-  "protocol_sha256": "810c895e1933178ecd3c64a70292ac234006f9d8f9e18325e6604e73c35e0054",
+  "protocol_sha256": "bc029d1bb48b38edbe32972adb06cba6210e4ef0f1a4d3aba1b7f485f3c2db40",
   "python_version": "3.12.3",
   "runtime_fields_in_deterministic_outputs": false,
   "seed_splits": {

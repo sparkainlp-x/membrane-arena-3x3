@@ -84,7 +84,7 @@ Historical reproduction uses `retry_policy=legacy_model_changing`, `drive_time_m
 ```
 
 - Configuration SHA-256: `5447b0b47f68b3b89bd3d8bbb1bd6118a9cad890bd798e0e6fe1ae8db9123322`
-- Protocol SHA-256: `810c895e1933178ecd3c64a70292ac234006f9d8f9e18325e6604e73c35e0054`
+- Protocol SHA-256: `bc029d1bb48b38edbe32972adb06cba6210e4ef0f1a4d3aba1b7f485f3c2db40`
 
 Runtime and timestamps are intentionally absent; deterministic numerical comparisons exclude runtime/environment metadata and use the exact raw seed/configuration. See `manifest.json` and `checksums.sha256`.
 
