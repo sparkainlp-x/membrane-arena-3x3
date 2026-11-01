@@ -1,0 +1,284 @@
+{
+  "engine_ablation": {
+    "exact_operators": {
+      "guard_causes": {},
+      "mean_achieved_accepted_time": 0.1,
+      "mean_attempts": 2.0,
+      "mean_candidate_proposals": 2.0,
+      "mean_estimated_dense_matrix_element_operations": 9216.0,
+      "runs": 2,
+      "target_reached": 2
+    },
+    "no_coupling": {
+      "guard_causes": {
+        "divergence_above_maximum": 41
+      },
+      "mean_achieved_accepted_time": 0.037500000000000006,
+      "mean_attempts": 21.5,
+      "mean_candidate_proposals": 21.5,
+      "mean_estimated_dense_matrix_element_operations": 99072.0,
+      "runs": 2,
+      "target_reached": 0
+    },
+    "no_dephasing": {
+      "guard_causes": {
+        "divergence_above_maximum": 42
+      },
+      "mean_achieved_accepted_time": 0.025,
+      "mean_attempts": 22.0,
+      "mean_candidate_proposals": 22.0,
+      "mean_estimated_dense_matrix_element_operations": 101376.0,
+      "runs": 2,
+      "target_reached": 0
+    },
+    "no_mirror": {
+      "guard_causes": {},
+      "mean_achieved_accepted_time": 0.1,
+      "mean_attempts": 2.0,
+      "mean_candidate_proposals": 2.0,
+      "mean_estimated_dense_matrix_element_operations": 9216.0,
+      "runs": 2,
+      "target_reached": 2
+    },
+    "reference": {
+      "guard_causes": {
+        "divergence_above_maximum": 41
+      },
+      "mean_achieved_accepted_time": 0.037500000000000006,
+      "mean_attempts": 21.5,
+      "mean_candidate_proposals": 21.5,
+      "mean_estimated_dense_matrix_element_operations": 99072.0,
+      "runs": 2,
+      "target_reached": 0
+    }
+  },
+  "engine_ablation_runs": 10,
+  "equal_accepted_time_comparisons": 7,
+  "experimental_unit_note": "Seed-level pairing is descriptive; the seed count alone does not establish independence or statistical significance.",
+  "held_out_executed": false,
+  "held_out_tuning": "none",
+  "paired_effects": {
+    "coherent_reversible_manipulation": {
+      "bootstrap_95_percentile_interval": [
+        0.0,
+        0.0
+      ],
+      "experimental_unit": "seed-level paired mean decoding-error difference",
+      "mean_difference": 0.0,
+      "n_units": 2,
+      "p_value_or_independence_claim": null
+    },
+    "detector_only_cancellation_then_removal": {
+      "bootstrap_95_percentile_interval": [
+        0.0,
+        0.0
+      ],
+      "experimental_unit": "seed-level paired mean decoding-error difference",
+      "mean_difference": 0.0,
+      "n_units": 2,
+      "p_value_or_independence_claim": null
+    },
+    "dissipative_reset_reference": {
+      "bootstrap_95_percentile_interval": [
+        1.0,
+        1.0
+      ],
+      "experimental_unit": "seed-level paired mean decoding-error difference",
+      "mean_difference": 1.0,
+      "n_units": 2,
+      "p_value_or_independence_claim": null
+    }
+  },
+  "profile": "smoke",
+  "seed_count": 2,
+  "seed_split": "all",
+  "threshold_sensitivity": "Not tuned in this benchmark; no guard thresholds were changed.",
+  "trajectory_effects": {
+    "exact_operators": {
+      "matched_seed_timepoints": 1,
+      "max_trajectory_error": 0.059550124734174474,
+      "mean_trajectory_error": 0.059550124734174474
+    },
+    "no_coupling": {
+      "matched_seed_timepoints": 2,
+      "max_trajectory_error": 0.00011478269613126522,
+      "mean_trajectory_error": 8.858757930646141e-05
+    },
+    "no_dephasing": {
+      "matched_seed_timepoints": 1,
+      "max_trajectory_error": 0.026327502705138117,
+      "mean_trajectory_error": 0.026327502705138117
+    },
+    "no_mirror": {
+      "matched_seed_timepoints": 1,
+      "max_trajectory_error": 0.026339227356895978,
+      "mean_trajectory_error": 0.026339227356895978
+    },
+    "reference": {
+      "matched_seed_timepoints": 2,
+      "max_trajectory_error": 0.0,
+      "mean_trajectory_error": 0.0
+    }
+  },
+  "wave_memory": {
+    "coherent_reversible_manipulation": {
+      "condition_number_mean": 1.323053192908221,
+      "decoding_error_rate": 0.0,
+      "decoding_errors": 0,
+      "input_energy_mean": 1.25,
+      "trials": 48
+    },
+    "detector_only_cancellation_then_removal": {
+      "condition_number_mean": 1.323053192908221,
+      "decoding_error_rate": 0.0,
+      "decoding_errors": 0,
+      "input_energy_mean": 1.25,
+      "trials": 48
+    },
+    "dissipative_reset_reference": {
+      "condition_number_mean": 1.323053192908221,
+      "decoding_error_rate": 1.0,
+      "decoding_errors": 48,
+      "input_energy_mean": 1.25,
+      "trials": 48
+    },
+    "no_intervention": {
+      "condition_number_mean": 1.323053192908221,
+      "decoding_error_rate": 0.0,
+      "decoding_errors": 0,
+      "input_energy_mean": 1.25,
+      "trials": 48
+    }
+  },
+  "wave_memory_rows": 192,
+  "wave_memory_strata": [
+    {
+      "condition_number_mean": 1.050563207968071,
+      "crosstalk": 0.0,
+      "decoding_error_rate": 0.0,
+      "delay": 1,
+      "intervention": "coherent_reversible_manipulation",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.5552195523201018,
+      "crosstalk": 0.35,
+      "decoding_error_rate": 0.0,
+      "delay": 1,
+      "intervention": "coherent_reversible_manipulation",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.0974174201394173,
+      "crosstalk": 0.0,
+      "decoding_error_rate": 0.0,
+      "delay": 4,
+      "intervention": "coherent_reversible_manipulation",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.5890125912052946,
+      "crosstalk": 0.35,
+      "decoding_error_rate": 0.0,
+      "delay": 4,
+      "intervention": "coherent_reversible_manipulation",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.050563207968071,
+      "crosstalk": 0.0,
+      "decoding_error_rate": 0.0,
+      "delay": 1,
+      "intervention": "detector_only_cancellation_then_removal",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.5552195523201018,
+      "crosstalk": 0.35,
+      "decoding_error_rate": 0.0,
+      "delay": 1,
+      "intervention": "detector_only_cancellation_then_removal",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.0974174201394173,
+      "crosstalk": 0.0,
+      "decoding_error_rate": 0.0,
+      "delay": 4,
+      "intervention": "detector_only_cancellation_then_removal",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.5890125912052946,
+      "crosstalk": 0.35,
+      "decoding_error_rate": 0.0,
+      "delay": 4,
+      "intervention": "detector_only_cancellation_then_removal",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.050563207968071,
+      "crosstalk": 0.0,
+      "decoding_error_rate": 1.0,
+      "delay": 1,
+      "intervention": "dissipative_reset_reference",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.5552195523201018,
+      "crosstalk": 0.35,
+      "decoding_error_rate": 1.0,
+      "delay": 1,
+      "intervention": "dissipative_reset_reference",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.0974174201394173,
+      "crosstalk": 0.0,
+      "decoding_error_rate": 1.0,
+      "delay": 4,
+      "intervention": "dissipative_reset_reference",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.5890125912052946,
+      "crosstalk": 0.35,
+      "decoding_error_rate": 1.0,
+      "delay": 4,
+      "intervention": "dissipative_reset_reference",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.050563207968071,
+      "crosstalk": 0.0,
+      "decoding_error_rate": 0.0,
+      "delay": 1,
+      "intervention": "no_intervention",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.5552195523201018,
+      "crosstalk": 0.35,
+      "decoding_error_rate": 0.0,
+      "delay": 1,
+      "intervention": "no_intervention",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.0974174201394173,
+      "crosstalk": 0.0,
+      "decoding_error_rate": 0.0,
+      "delay": 4,
+      "intervention": "no_intervention",
+      "trials": 12
+    },
+    {
+      "condition_number_mean": 1.5890125912052946,
+      "crosstalk": 0.35,
+      "decoding_error_rate": 0.0,
+      "delay": 4,
+      "intervention": "no_intervention",
+      "trials": 12
+    }
+  ]
+}

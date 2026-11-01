@@ -1,0 +1,56 @@
+{
+  "profile": "smoke",
+  "seed_splits": {
+    "development": [0, 1],
+    "validation": [],
+    "held_out": []
+  },
+  "engine": {
+    "target_accepted_time": 0.1,
+    "max_attempts": 8,
+    "failure_limit": 5,
+    "adaptive_retry": true,
+    "retry_policy": "dt_only",
+    "drive_time_mode": "accepted_time",
+    "lattice": {
+      "dim": 8,
+      "dt": 0.05,
+      "coupling": 0.02,
+      "dephasing": 0.5,
+      "mirror_strength": 0.1,
+      "operator_mode": "legacy"
+    },
+    "guards": {
+      "residual_target": 0.2,
+      "divergence_min": 0.02,
+      "divergence_max": 0.6,
+      "purity_floor": 0.05,
+      "entropy_target": 0.5
+    },
+    "ablation_arms": {
+      "reference": {},
+      "no_mirror": {
+        "mirror_strength": 0.0
+      },
+      "no_coupling": {
+        "coupling": 0.0
+      },
+      "no_dephasing": {
+        "dephasing": 0.0
+      },
+      "exact_operators": {
+        "operator_mode": "exact"
+      }
+    }
+  },
+  "wave_memory": {
+    "channels": 4,
+    "codebook_size": 24,
+    "trials": 6,
+    "delays": [1, 4],
+    "crosstalk_levels": [0.0, 0.35],
+    "phase_drift_std": 0.03,
+    "gain_drift_std": 0.02,
+    "snr_db": 20.0
+  }
+}
