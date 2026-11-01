@@ -138,6 +138,43 @@ def test_invalid_candidate_is_logged_without_observer_eigendecomposition(monkeyp
     assert result["accepted_time"] == 0.0
 
 
+def test_non_numeric_candidate_fails_closed_before_observer(monkeypatch):
+    arena = MembraneArena3x3(EngineConfig(adaptive_retry=False))
+    invalid = np.full(arena.lattice.state.shape, "not-a-matrix", dtype=object)
+    monkeypatch.setattr(arena.lattice, "propose_step", lambda *args, **kwargs: invalid)
+    result = arena.step()
+    assert result["status"] == "rejected"
+    assert result["final_step_reason"] == "invalid_candidate_dtype"
+    assert result["attempts"][0]["metrics"] == {}
+    assert result["attempts"][0]["offending_cells"] == ["lattice:dtype"]
+
+
+def test_effective_parameter_bounds_are_checked_separately_from_stock():
+    from membrane_arena_3x3.shields import GuardConfig
+
+    arena = MembraneArena3x3(EngineConfig(guards=GuardConfig(
+        residual_target=10.0, divergence_min=0.0, divergence_max=1.0,
+        purity_floor=0.0,
+    )))
+    effective = {
+        "dt": arena.config.lattice.dt / 2,
+        "mirror_strength": -0.01,
+        "coupling": arena.config.lattice.coupling,
+        "dephasing": arena.config.lattice.dephasing,
+    }
+    valid, reason, report = arena._validate_detailed(
+        arena.lattice.state, effective
+    )
+    assert not valid and reason == "effective_parameter_out_of_bounds"
+    assert report["guard_violations"] == ["effective_parameter_out_of_bounds"]
+    assert report["offending_by_guard"][reason] == [
+        "lattice:effective_mirror_strength"
+    ]
+    assert report["thresholds"]["parameter_bounds"]["mirror_strength"] == [
+        0.0, 0.5
+    ]
+
+
 def test_attempt_ledger_records_accepted_repair_dt_and_intervention(monkeypatch):
     from membrane_arena_3x3.shields import GuardConfig
 
@@ -185,3 +222,67 @@ def test_attempt_ledger_records_accepted_repair_dt_and_intervention(monkeypatch)
     assert second["attempts"][0]["drive_time_seconds"] == accepted_before
     assert arena.attempt_ledger[2]["drive_time_seconds"] == accepted_before
     assert len(arena.attempt_ledger) == 3
+
+
+def test_dt_only_repair_is_labeled_as_numerical_backtracking(monkeypatch):
+    from membrane_arena_3x3.shields import GuardConfig
+
+    arena = MembraneArena3x3(EngineConfig(
+        guards=GuardConfig(
+            residual_target=10.0, divergence_min=0.0, divergence_max=1.0,
+            purity_floor=0.0,
+        ),
+        max_retries=1,
+        retry_policy="dt_only",
+    ))
+    validate = arena._validate_detailed
+    forced = False
+
+    def reject_stock_once(candidate, effective=None):
+        nonlocal forced
+        if not forced and effective["dt"] == arena.config.lattice.dt:
+            forced = True
+            return False, "forced_initial_rejection", {
+                "failed_guard": "forced_initial_rejection",
+                "guard_violations": ["forced_initial_rejection"],
+                "offending_cells": [],
+                "offending_pairs": [],
+                "offending_by_guard": {"forced_initial_rejection": []},
+                "metrics": {},
+                "thresholds": {},
+            }
+        return validate(candidate, effective)
+
+    monkeypatch.setattr(arena, "_validate_detailed", reject_stock_once)
+    result = arena.step()
+
+    repair = result["attempts"][1]
+    assert repair["accepted"]
+    assert repair["intervention_type"] == "numerical_backtracking"
+    assert repair["mirror_strength"] == arena.config.lattice.mirror_strength
+    assert repair["coupling"] == arena.config.lattice.coupling
+
+
+def test_final_failure_reason_is_separate_from_each_attempt_reason(monkeypatch):
+    arena = MembraneArena3x3(EngineConfig(max_retries=2))
+    validate = arena._validate_detailed
+    reasons = iter(["initial_failure", "repair_failure_1", "repair_failure_2"])
+
+    def reject_every_attempt(candidate, effective=None):
+        _, _, report = validate(candidate, effective)
+        reason = next(reasons)
+        report["failed_guard"] = reason
+        report["guard_violations"] = [reason]
+        report["offending_by_guard"] = {reason: []}
+        return False, reason, report
+
+    monkeypatch.setattr(arena, "_validate_detailed", reject_every_attempt)
+    result = arena.step()
+
+    assert result["final_step_reason"] == "repair_failure_2"
+    assert [attempt["reason"] for attempt in result["attempts"]] == [
+        "initial_failure", "repair_failure_1", "repair_failure_2"
+    ]
+    assert arena.rejections[-1]["reason"] == "repair_failure_2"
+    assert arena.rejections[-1]["failed_guard"] == "repair_failure_2"
+    assert arena.failures == 1

@@ -114,7 +114,11 @@ class MembraneArena3x3:
             "dephasing": cfg.dephasing,
             "mirror_strength": cfg.mirror_strength,
         }
-        shape = getattr(candidate, "shape", None)
+        try:
+            candidate = np.asarray(candidate)
+        except (TypeError, ValueError):
+            candidate = np.asarray([])
+        shape = candidate.shape
         if shape != self.lattice.state.shape:
             reason = "invalid_candidate_shape"
             return False, reason, {
@@ -123,6 +127,17 @@ class MembraneArena3x3:
                 "offending_cells": ["lattice:shape"],
                 "offending_pairs": [],
                 "offending_by_guard": {reason: ["lattice:shape"]},
+                "metrics": {},
+                "thresholds": self._thresholds(),
+            }
+        if candidate.dtype.kind not in "fciu":
+            reason = "invalid_candidate_dtype"
+            return False, reason, {
+                "failed_guard": reason,
+                "guard_violations": [reason],
+                "offending_cells": ["lattice:dtype"],
+                "offending_pairs": [],
+                "offending_by_guard": {reason: ["lattice:dtype"]},
                 "metrics": {},
                 "thresholds": self._thresholds(),
             }
@@ -196,6 +211,7 @@ class MembraneArena3x3:
             ],
             "thresholds": {
                 **report["thresholds"],
+                "failure_limit": self.config.failure_limit,
                 "parameter_bounds": {
                     "dt": {"min_exclusive": 0.0},
                     "coupling": [cfg.coupling_min, cfg.coupling_max],
@@ -210,10 +226,46 @@ class MembraneArena3x3:
         ok, reason, _ = self._validate_detailed(candidate)
         return ok, reason
 
+    def _validate_with_telemetry(
+        self, candidate: np.ndarray, effective: dict
+    ) -> tuple[bool, str, dict]:
+        """Preserve validation overrides while retaining fail-closed checks."""
+        validator = self._validate
+        is_custom = (
+            getattr(validator, "__func__", None) is not MembraneArena3x3._validate
+            or "_validate" in self.__dict__
+        )
+        detailed_ok, detailed_reason, report = self._validate_detailed(
+            candidate, effective
+        )
+        if not is_custom:
+            return detailed_ok, detailed_reason, report
+
+        custom_ok, custom_reason = validator(candidate)
+        hard_violations = {
+            "invalid_candidate_shape",
+            "invalid_candidate_dtype",
+            "invalid_density_matrix",
+            "calibrator_parameter_out_of_bounds",
+            "effective_parameter_out_of_bounds",
+        }
+        unsafe = hard_violations.intersection(report["guard_violations"])
+        accepted = bool(custom_ok) and not unsafe
+        reason = (
+            detailed_reason if unsafe else custom_reason
+        )
+        if not accepted:
+            report["failed_guard"] = reason
+            report["guard_violations"] = list(dict.fromkeys(
+                [*report["guard_violations"], reason]
+            ))
+            report["offending_by_guard"].setdefault(reason, [])
+        return accepted, reason, report
+
     def _thresholds(self) -> dict:
         cfg = self.config.lattice
         return {
-            **self.config.guards.to_dict(),
+            **self.config.guards_dict(),
             "parameter_bounds": {
                 "dt": {"min_exclusive": 0.0},
                 "coupling": [cfg.coupling_min, cfg.coupling_max],
@@ -229,6 +281,7 @@ class MembraneArena3x3:
             Path(__file__).with_name("core.py"),
             Path(__file__).with_name("lattice.py"),
             Path(__file__).with_name("shields.py"),
+            Path(__file__).with_name("crystallize_injection.py"),
         )
         hashes = {
             path.name: hashlib.sha256(path.read_bytes()).hexdigest()
@@ -299,7 +352,9 @@ class MembraneArena3x3:
             "dephasing": lattice_cfg.dephasing,
         }
         candidate = self.lattice.propose_step(action.total_signal)
-        accepted, reason, report = self._validate_detailed(candidate, effective)
+        accepted, reason, report = self._validate_with_telemetry(
+            candidate, effective
+        )
         attempts = [{
             "step": self.current_step + 1,
             "attempt": 0,
@@ -339,7 +394,7 @@ class MembraneArena3x3:
                     mirror_strength=mirror_eff,
                     coupling=coupling_eff,
                 )
-                ok, variant_reason, variant_report = self._validate_detailed(
+                ok, variant_reason, variant_report = self._validate_with_telemetry(
                     variant, effective
                 )
                 self.repair_attempts_total += 1
@@ -363,6 +418,7 @@ class MembraneArena3x3:
                 }
                 attempts.append(attempt)
                 repair_attempts.append(attempt)
+                report = variant_report
                 if ok:
                     candidate, accepted, reason = variant, True, "ok"
                     accepted_via_repair = True

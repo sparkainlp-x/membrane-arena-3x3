@@ -41,6 +41,25 @@ class LatticeConfig:
     operator_mode: str = "legacy"
 
     def __post_init__(self) -> None:
+        if self.dim < 1:
+            raise ValueError("dim must be >= 1")
+        numeric = (
+            self.dt,
+            self.coupling,
+            self.coupling_min,
+            self.coupling_max,
+            self.dephasing,
+            self.dephasing_min,
+            self.dephasing_max,
+            self.mirror_strength,
+            self.mirror_min,
+            self.mirror_max,
+            self.resonance_threshold,
+        )
+        if not all(np.isfinite(value) for value in numeric):
+            raise ValueError("lattice parameters must be finite")
+        if self.dt <= 0:
+            raise ValueError("dt must be > 0")
         if self.operator_mode not in ("legacy", "exact"):
             raise ValueError("operator_mode must be 'legacy' or 'exact'")
 

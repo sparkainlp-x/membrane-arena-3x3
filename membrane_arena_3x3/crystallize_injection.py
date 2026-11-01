@@ -170,19 +170,41 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
             candidate = self._propose_with_dt_factor(
                 factor, inj.mirror_variant, signal
             )
-            ok, reason = self._validate(candidate)
-            attempts.append(
-                {
-                    "attempt": k + 1,
-                    "commit_p": p,
-                    "factor": factor,
-                    "mirror_strength": inj.mirror_variant,
-                    "passed": bool(ok),
-                    "reason": reason,
-                    "brier": brier(p, ok),
-                    "points": calibration_points(p, ok),
-                }
-            )
+            effective = {
+                "dt": self.config.lattice.dt * factor,
+                "mirror_strength": inj.mirror_variant,
+                "coupling": self.config.lattice.coupling,
+                "dephasing": self.config.lattice.dephasing,
+            }
+            ok, reason, report = self._validate_with_telemetry(candidate, effective)
+            attempt = {
+                "step": step_index,
+                "attempt": k + 1,
+                "proposal": "injection_repair",
+                **effective,
+                "drive_time_seconds": (
+                    self.accepted_time
+                    if self.config.drive_time_mode == "accepted_time"
+                    else (step_index - 1) * self.config.lattice.dt
+                ),
+                "drive_time_mode": self.config.drive_time_mode,
+                "intervention_type": (
+                    "model_intervention"
+                    if inj.mirror_variant != self.config.lattice.mirror_strength
+                    else "numerical_backtracking"
+                ),
+                "accepted": bool(ok),
+                "reason": reason,
+                "commit_p": p,
+                "factor": factor,
+                "passed": bool(ok),
+                "brier": brier(p, ok),
+                "points": calibration_points(p, ok),
+                **report,
+            }
+            attempts.append(attempt)
+            self.attempt_ledger.append(attempt)
+            self.repair_attempts_total += 1
             if ok:
                 passed_candidate = candidate
                 passed_mirror = inj.mirror_variant
@@ -214,20 +236,53 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
             self.config.schumann_hz,
             self.config.schumann_amplitude,
             self.config.lattice.dt,
+            drive_time_seconds=(
+                self.accepted_time
+                if self.config.drive_time_mode == "accepted_time"
+                else self.current_step * self.config.lattice.dt
+            ),
         )
         lattice_cfg = self.config.lattice
         action.coupling = lattice_cfg.coupling
         action.dephasing = lattice_cfg.dephasing
         action.mirror_strength = lattice_cfg.mirror_strength
 
+        effective = {
+            "dt": lattice_cfg.dt,
+            "mirror_strength": lattice_cfg.mirror_strength,
+            "coupling": lattice_cfg.coupling,
+            "dephasing": lattice_cfg.dephasing,
+        }
         candidate = self.lattice.propose_step(action.total_signal)
-        accepted, reason = self._validate(candidate)
+        accepted, reason, report = self._validate_with_telemetry(
+            candidate, effective
+        )
+        initial_attempt = {
+            "step": self.current_step + 1,
+            "attempt": 0,
+            "proposal": "initial",
+            **effective,
+            "intervention_type": "none",
+            "accepted": bool(accepted),
+            "reason": reason,
+            "drive_time_mode": self.config.drive_time_mode,
+            "drive_time_seconds": (
+                self.accepted_time
+                if self.config.drive_time_mode == "accepted_time"
+                else self.current_step * lattice_cfg.dt
+            ),
+            **report,
+        }
+        self.attempt_ledger.append(initial_attempt)
+        step_attempts = [initial_attempt]
+        event = {"attempts": []}
         injected = False
 
         if not accepted:
             event, variant, mirror = self._inject(
                 self.current_step + 1, action.total_signal, reason
             )
+            step_attempts.extend(event["attempts"])
             self.injections.append(event)
             self.injection_score_total += event["score"]
             self.injection_cost_total += event["sampling_cost"]
@@ -236,14 +291,32 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
             if variant is not None:
                 candidate, accepted, reason, injected = variant, True, "ok", True
                 action.mirror_strength = mirror  # log the value actually used
+                self.repair_accepts += 1
 
         if accepted:
             self.lattice.commit(candidate)
+            self.accepted_time += (
+                event["attempts"][-1]["dt"]
+                if injected
+                else lattice_cfg.dt
+            )
             self.failures = 0
         else:
             self.failures += 1
+            final_step_reason = (
+                event["attempts"][-1]["reason"]
+                if self.injections and self.injections[-1]["attempts"]
+                else reason
+            )
+            self.rejections.append({
+                "step": self.current_step + 1,
+                "reason": final_step_reason,
+                "final_step_reason": final_step_reason,
+                "attempts": step_attempts,
+            })
             if self.failures >= self.config.failure_limit:
                 self.circuit_breaker = True
+        final_step_reason = "ok" if accepted else self.rejections[-1]["final_step_reason"]
 
         self.calibrator.mark(action, accepted, reason)
         self.calibrations.append(action.to_dict())
@@ -257,10 +330,14 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
         return {
             "status": "accepted" if accepted else "rejected",
             "reason": reason,
+            "final_step_reason": final_step_reason,
             "step": self.current_step,
             "observation": post.to_dict(),
             "calibration": action.to_dict(),
             "injected": injected,
+            "attempts": step_attempts,
+            "repair_attempts": step_attempts[1:],
+            "accepted_time": self.accepted_time,
         }
 
     def summary(self) -> dict:
