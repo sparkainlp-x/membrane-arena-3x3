@@ -30,3 +30,8 @@ jobs:
         run: |
           membrane-arena-3x3 --steps 10 --seed 42
           membrane-arena-3x3 --steps 10 --seed 42 --schumann
+      - name: Scientific verification smoke benchmark
+        run: |
+          python scripts/scientific_verification.py \
+            --config verification_configs/smoke.json \
+            --out-dir /tmp/membrane-arena-scientific-smoke

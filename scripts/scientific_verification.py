@@ -228,6 +228,12 @@ def _summarize(rows: list[dict], seeds: list[int], config: dict) -> dict:
             "mean_candidate_proposals": float(
                 np.mean([row["candidate_proposals"] for row in selected])
             ),
+            "mean_estimated_dense_matrix_element_operations": float(
+                np.mean([
+                    row["estimated_dense_matrix_element_operations"]
+                    for row in selected
+                ])
+            ),
             "guard_causes": causes,
         }
     return {
@@ -311,14 +317,15 @@ def _report(summary: dict, command: str, hashes: dict) -> str:
         "",
         "### Engine ablation outcomes",
         "",
-        "| arm | target reached / runs | mean accepted time | mean proposals | guard causes |",
-        "|---|---:|---:|---:|---|",
+        "| arm | target reached / runs | mean accepted time | mean attempts | estimated matrix operations | guard causes |",
+        "|---|---:|---:|---:|---:|---|",
     ])
     for arm, result in summary["engine_ablation"].items():
         lines.append(
             f"| {arm} | {result['target_reached']} / {result['runs']} | "
             f"{result['mean_achieved_accepted_time']:.6f} | "
-            f"{result['mean_candidate_proposals']:.2f} | "
+            f"{result['mean_attempts']:.2f} | "
+            f"{result['mean_estimated_dense_matrix_element_operations']:.0f} | "
             f"`{json.dumps(result['guard_causes'], sort_keys=True)}` |"
         )
     lines.extend([
