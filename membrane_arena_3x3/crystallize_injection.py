@@ -318,7 +318,7 @@ class MembraneArena3x3WithInjection(MembraneArena3x3):
                 self.circuit_breaker = True
         final_step_reason = "ok" if accepted else self.rejections[-1]["final_step_reason"]
 
-        self.calibrator.mark(action, accepted, reason)
+        self.calibrator.mark(action, accepted, final_step_reason)
         self.calibrations.append(action.to_dict())
 
         post = self.observer.observe(

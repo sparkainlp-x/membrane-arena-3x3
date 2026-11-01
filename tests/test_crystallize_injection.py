@@ -120,6 +120,21 @@ def test_injection_attempts_share_accepted_time_ledger_and_accounting():
     )
 
 
+def test_failed_injection_calibration_records_final_repair_reason():
+    eng = MembraneArena3x3WithInjection(
+        EngineConfig(steps=1, seed=5, adaptive_retry=False),
+        InjectionConfig(max_attempts=1),
+    )
+    reasons = iter([(False, "initial_reason"), (False, "repair_reason")])
+    eng._validate = lambda candidate: next(reasons)
+
+    result = eng.step()
+
+    assert result["final_step_reason"] == "repair_reason"
+    assert eng.attempt_ledger[-1]["reason"] == "repair_reason"
+    assert eng.calibrations[-1]["reason"] == "repair_reason"
+
+
 def test_variant_proposal_restores_dt_and_mirror():
     eng = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=42))
     dt0 = eng.lattice.config.dt

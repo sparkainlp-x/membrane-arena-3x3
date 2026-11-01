@@ -109,12 +109,13 @@ same inputs, drift, and noise.
 
 The full runner refuses an all-splits invocation. Run development and
 validation first, archive their `manifest.json` files, then use the exact
-configuration and protocol SHA-256 values from those manifests when invoking
-`--split held_out`. The held-out command fails if either hash changed. Do not
-tune a protocol or configuration after this freeze, and do not tune on
+configuration, protocol, and source-bundle SHA-256 values from those manifests
+when invoking `--split held_out`. The held-out command fails if any of the
+three hashes changed, including source code. Do not tune a protocol,
+configuration, or implementation after this freeze, and do not tune on
 held-out results. The output configuration and manifest record the exact input
 hashes, source hashes, commit/dirty state, Python/NumPy versions, seed-stream
-definitions, and rerun command.
+definitions, and complete rerun command.
 
 Paired effects use seed-level paired means as the experimental unit; percentile
 intervals are descriptive. A seed count alone does not establish independent
@@ -151,10 +152,10 @@ python scripts/scientific_verification.py --config verification_configs/full.jso
 python scripts/scientific_verification.py --config verification_configs/full.json --out-dir verification_results/full-validation --split validation
 ```
 
-Only after freezing the two hashes in the development/validation manifests:
+Only after freezing all three hashes in the development/validation manifests:
 
 ```bash
-python scripts/scientific_verification.py --config verification_configs/full.json --out-dir verification_results/full-held-out --split held_out --expected-config-sha256 <frozen-configuration-sha256> --expected-protocol-sha256 <frozen-protocol-sha256>
+python scripts/scientific_verification.py --config verification_configs/full.json --out-dir verification_results/full-held-out --split held_out --expected-config-sha256 <frozen-configuration-sha256> --expected-protocol-sha256 <frozen-protocol-sha256> --expected-source-sha256 <frozen-source-bundle-sha256>
 ```
 
 Each invocation writes `configuration.json`, `manifest.json`,

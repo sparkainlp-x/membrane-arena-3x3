@@ -7,6 +7,7 @@ import csv
 import hashlib
 import json
 import platform
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -44,6 +45,26 @@ def _git_provenance() -> dict:
     except (OSError, subprocess.CalledProcessError):
         commit, dirty = None, None
     return {"commit": commit, "dirty": dirty}
+
+
+def _source_hashes() -> dict[str, str]:
+    sources = (
+        ROOT / "membrane_arena_3x3" / "engine.py",
+        ROOT / "membrane_arena_3x3" / "lattice.py",
+        ROOT / "membrane_arena_3x3" / "shields.py",
+        ROOT / "membrane_arena_3x3" / "core.py",
+        ROOT / "membrane_arena_3x3" / "crystallize_injection.py",
+        ROOT / "membrane_arena_3x3" / "wave_memory.py",
+        Path(__file__),
+    )
+    return {
+        path.relative_to(ROOT).as_posix(): _sha256(path.read_bytes())
+        for path in sources
+    }
+
+
+def _source_bundle_sha256(source_hashes: dict[str, str]) -> str:
+    return _sha256(_json_bytes(source_hashes))
 
 
 def _collect_engine(seed: int, config: dict) -> tuple[list[dict], dict[str, dict]]:
@@ -260,6 +281,20 @@ def _summarize(rows: list[dict], seeds: list[int], config: dict) -> dict:
     }
 
 
+def _run_scope_note(summary: dict) -> str:
+    if summary["profile"] == "smoke":
+        return (
+            "This is a smoke artifact over development seeds only; full "
+            "development, validation, held-out, and physical-validation runs "
+            "are not part of this artifact."
+        )
+    return (
+        f"This full-profile artifact contains the `{summary['seed_split']}` split "
+        "only. Other seed splits require separate runs; this report does not "
+        "assert that they have been run. Physical validation was not run."
+    )
+
+
 def _report(summary: dict, command: str, hashes: dict) -> str:
     lines = [
         "# Scientific verification smoke/full run",
@@ -353,9 +388,13 @@ def _report(summary: dict, command: str, hashes: dict) -> str:
         summary["experimental_unit_note"],
         "Paired effects and percentile intervals are descriptive at the "
         "seed-level experimental unit; no significance or independence claim "
-        "is made. Smoke results are development-only and not confirmatory.",
-        "This artifact is a smoke run only; full development, validation, "
-        "held-out, and physical-validation runs were not run.",
+        "is made.",
+        (
+            "Smoke outcomes are development-only and not confirmatory."
+            if summary["profile"] == "smoke"
+            else "Full-profile outcomes are split-specific and not confirmatory."
+        ),
+        _run_scope_note(summary),
         "",
         "The stock retry policy remains the historical model-changing policy. "
         "A `dt_only` option is available for numerical backtracking; mirror and "
@@ -380,6 +419,7 @@ def _report(summary: dict, command: str, hashes: dict) -> str:
         "",
         f"- Configuration SHA-256: `{hashes['configuration']}`",
         f"- Protocol SHA-256: `{hashes['protocol']}`",
+        f"- Source bundle SHA-256: `{hashes['source_bundle']}`",
         "",
         "Runtime and timestamps are intentionally absent; deterministic numerical "
         "comparisons exclude runtime/environment metadata and use the exact raw "
@@ -397,12 +437,15 @@ def _report(summary: dict, command: str, hashes: dict) -> str:
 
 
 def run(config_path: Path, out_dir: Path, split: str, command: str,
-        expected_config_hash: str | None, expected_protocol_hash: str | None) -> None:
+        expected_config_hash: str | None, expected_protocol_hash: str | None,
+        expected_source_hash: str | None) -> None:
     config_bytes = config_path.read_bytes()
     config = json.loads(config_bytes)
     config_hash = _sha256(config_bytes)
     protocol_path = ROOT / "docs" / "SCIENTIFIC-VERIFICATION.md"
     protocol_hash = _sha256(protocol_path.read_bytes())
+    source_hashes = _source_hashes()
+    source_bundle_hash = _source_bundle_sha256(source_hashes)
     seed_splits = config["seed_splits"]
     profile = config["profile"]
 
@@ -411,11 +454,17 @@ def run(config_path: Path, out_dir: Path, split: str, command: str,
     if split not in ("all", "development", "validation", "held_out"):
         raise ValueError("split must be all, development, validation, or held_out")
     if split == "held_out":
-        if not expected_config_hash or not expected_protocol_hash:
-            raise ValueError("held-out execution requires both frozen SHA-256 values")
-        if expected_config_hash != config_hash or expected_protocol_hash != protocol_hash:
-            raise ValueError("held-out configuration/protocol hash does not match frozen values")
-    elif expected_config_hash or expected_protocol_hash:
+        if not expected_config_hash or not expected_protocol_hash or not expected_source_hash:
+            raise ValueError("held-out execution requires frozen config, protocol, and source SHA-256 values")
+        if (
+            expected_config_hash != config_hash
+            or expected_protocol_hash != protocol_hash
+            or expected_source_hash != source_bundle_hash
+        ):
+            raise ValueError(
+                "held-out configuration/protocol/source hash does not match frozen values"
+            )
+    elif expected_config_hash or expected_protocol_hash or expected_source_hash:
         raise ValueError("frozen hash arguments are only valid for held-out execution")
 
     seeds = (
@@ -451,14 +500,6 @@ def run(config_path: Path, out_dir: Path, split: str, command: str,
 
     summary_path = out_dir / "summary.json"
     summary_path.write_bytes(_json_bytes(summary))
-    sources = (
-        ROOT / "membrane_arena_3x3" / "engine.py",
-        ROOT / "membrane_arena_3x3" / "lattice.py",
-        ROOT / "membrane_arena_3x3" / "shields.py",
-        ROOT / "membrane_arena_3x3" / "core.py",
-        ROOT / "membrane_arena_3x3" / "wave_memory.py",
-        Path(__file__),
-    )
     manifest = {
         "command": command,
         "commit_and_dirty_state": _git_provenance(),
@@ -466,10 +507,8 @@ def run(config_path: Path, out_dir: Path, split: str, command: str,
         "split": split,
         "configuration_sha256": config_hash,
         "protocol_sha256": protocol_hash,
-        "source_sha256": {
-            path.relative_to(ROOT).as_posix(): _sha256(path.read_bytes())
-            for path in sources
-        },
+        "source_sha256": source_hashes,
+        "source_bundle_sha256": source_bundle_hash,
         "python_version": platform.python_version(),
         "numpy_version": np.__version__,
         "seed_splits": seed_splits,
@@ -484,7 +523,8 @@ def run(config_path: Path, out_dir: Path, split: str, command: str,
         },
         "held_out_freeze_check": (
             {"configuration_sha256": expected_config_hash,
-             "protocol_sha256": expected_protocol_hash}
+             "protocol_sha256": expected_protocol_hash,
+             "source_bundle_sha256": expected_source_hash}
             if split == "held_out" else None
         ),
         "runtime_fields_in_deterministic_outputs": False,
@@ -494,6 +534,7 @@ def run(config_path: Path, out_dir: Path, split: str, command: str,
     hashes = {
         "configuration": config_hash,
         "protocol": protocol_hash,
+        "source_bundle": source_bundle_hash,
     }
     report_path = out_dir / "report.md"
     report_path.write_text(_report(summary, command, hashes), encoding="utf-8")
@@ -506,6 +547,31 @@ def run(config_path: Path, out_dir: Path, split: str, command: str,
     (out_dir / "checksums.sha256").write_text(checksums, encoding="utf-8")
 
 
+def _reproduction_command(
+    config: str,
+    out_dir: str,
+    split: str,
+    expected_config_hash: str | None = None,
+    expected_protocol_hash: str | None = None,
+    expected_source_hash: str | None = None,
+) -> str:
+    command_args = [
+        sys.executable,
+        "scripts/scientific_verification.py",
+        "--config", config,
+        "--out-dir", out_dir,
+        "--split", split,
+    ]
+    for option, value in (
+        ("--expected-config-sha256", expected_config_hash),
+        ("--expected-protocol-sha256", expected_protocol_hash),
+        ("--expected-source-sha256", expected_source_hash),
+    ):
+        if value:
+            command_args.extend([option, value])
+    return shlex.join(command_args)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True)
@@ -514,15 +580,20 @@ def main() -> None:
                         default="all")
     parser.add_argument("--expected-config-sha256")
     parser.add_argument("--expected-protocol-sha256")
+    parser.add_argument("--expected-source-sha256")
     args = parser.parse_args()
-    command = " ".join(
-        [sys.executable, "scripts/scientific_verification.py",
-         "--config", args.config, "--out-dir", args.out_dir,
-         "--split", args.split]
+    command = _reproduction_command(
+        args.config,
+        args.out_dir,
+        args.split,
+        args.expected_config_sha256,
+        args.expected_protocol_sha256,
+        args.expected_source_sha256,
     )
     run(
         Path(args.config), Path(args.out_dir), args.split, command,
         args.expected_config_sha256, args.expected_protocol_sha256,
+        args.expected_source_sha256,
     )
     print(f"wrote verification artifacts to {args.out_dir}")
 
