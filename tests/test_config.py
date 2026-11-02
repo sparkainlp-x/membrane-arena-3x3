@@ -26,11 +26,26 @@ def test_aliasing_setting_is_allowed_when_the_signal_is_off():
     [
         {"steps": -1},
         {"failure_limit": 0},
-        {"lattice": LatticeConfig(dt=0.0)},
+        {"lattice_factory": lambda: LatticeConfig(dt=0.0)},
         {"schumann": True, "schumann_hz": 0.0},
     ],
 )
 def test_nonsense_settings_are_rejected(kwargs):
+    with pytest.raises(ValueError):
+        settings = dict(kwargs)
+        if "lattice_factory" in settings:
+            settings["lattice"] = settings.pop("lattice_factory")()
+        EngineConfig(**settings)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"retry_policy": "mirror_is_accuracy"},
+        {"drive_time_mode": "implicit_attempt_time"},
+    ],
+)
+def test_new_retry_and_drive_policies_are_explicit(kwargs):
     with pytest.raises(ValueError):
         EngineConfig(**kwargs)
 

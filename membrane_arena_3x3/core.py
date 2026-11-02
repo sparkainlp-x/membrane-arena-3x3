@@ -30,9 +30,16 @@ def project_valid(rho: np.ndarray) -> np.ndarray:
 
 def is_valid_density_matrix(rho: np.ndarray, tol: float = 1e-8) -> bool:
     """Check Hermiticity, unit trace, finiteness, and positive semidefiniteness."""
-    if rho.shape[0] != rho.shape[1]:
+    rho = np.asarray(rho)
+    if rho.ndim != 2 or rho.shape[0] != rho.shape[1]:
+        return False
+    if rho.dtype.kind not in "fciu":
         return False
     if not np.all(np.isfinite(rho)):
+        return False
+    # A PSD unit-trace matrix cannot have an entry with magnitude above one.
+    # Reject extreme finite inputs before LAPACK sees an unsafe spectrum.
+    if np.max(np.abs(rho)) > 1.0 + tol:
         return False
     if not np.allclose(rho, rho.conj().T, atol=tol):
         return False

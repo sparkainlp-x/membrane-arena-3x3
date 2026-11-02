@@ -87,6 +87,54 @@ def test_counts_match_stock_layout():
     assert summary["injection_events"] == len(summary["injections"])
 
 
+def test_injection_attempts_share_accepted_time_ledger_and_accounting():
+    eng = MembraneArena3x3WithInjection(
+        EngineConfig(
+            steps=30,
+            seed=42,
+            adaptive_retry=False,
+            schumann=True,
+            drive_time_mode="accepted_time",
+        )
+    )
+    summary = eng.run()
+    elapsed = 0.0
+    by_step = {}
+    for attempt in summary["attempt_ledger"]:
+        by_step.setdefault(attempt["step"], []).append(attempt)
+    for step in sorted(by_step):
+        attempts = by_step[step]
+        assert all(
+            attempt["drive_time_seconds"] == elapsed for attempt in attempts
+        )
+        accepted = [attempt for attempt in attempts if attempt["accepted"]]
+        assert len(accepted) <= 1
+        if accepted:
+            elapsed += accepted[0]["dt"]
+    assert summary["accepted_time"] == pytest.approx(elapsed)
+    assert summary["repair_attempts_total"] == sum(
+        len(event["attempts"]) for event in summary["injections"]
+    )
+    assert len(summary["attempt_ledger"]) == (
+        summary["steps_executed"] + summary["repair_attempts_total"]
+    )
+
+
+def test_failed_injection_calibration_records_final_repair_reason():
+    eng = MembraneArena3x3WithInjection(
+        EngineConfig(steps=1, seed=5, adaptive_retry=False),
+        InjectionConfig(max_attempts=1),
+    )
+    reasons = iter([(False, "initial_reason"), (False, "repair_reason")])
+    eng._validate = lambda candidate: next(reasons)
+
+    result = eng.step()
+
+    assert result["final_step_reason"] == "repair_reason"
+    assert eng.attempt_ledger[-1]["reason"] == "repair_reason"
+    assert eng.calibrations[-1]["reason"] == "repair_reason"
+
+
 def test_variant_proposal_restores_dt_and_mirror():
     eng = MembraneArena3x3WithInjection(EngineConfig(steps=200, seed=42))
     dt0 = eng.lattice.config.dt

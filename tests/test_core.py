@@ -58,6 +58,11 @@ def test_validity_check_rejects_non_square():
     assert not is_valid_density_matrix(np.ones((2, 3)))
 
 
+def test_validity_check_rejects_extreme_finite_entries_before_spectrum():
+    rho = np.diag([1e308, -1e308])
+    assert not is_valid_density_matrix(rho)
+
+
 @pytest.mark.parametrize("seed", range(3))
 def test_dephasing_and_mirror_keep_the_state_valid(seed):
     rho = random_density_matrix(np.random.default_rng(seed))

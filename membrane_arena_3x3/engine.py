@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import hashlib
+import platform
+from pathlib import Path
+import subprocess
 
 import numpy as np
 
@@ -32,6 +36,8 @@ class EngineConfig:
     retry_dt_factors: tuple[float, ...] = (0.5, 0.25, 0.125)
     retry_mirror_factors: tuple[float, ...] = (0.5, 0.0, 0.0)
     retry_coupling_factors: tuple[float, ...] = (0.5, 0.25, 0.0)
+    retry_policy: str = "legacy_model_changing"
+    drive_time_mode: str = "legacy_step_index"
 
     def __post_init__(self) -> None:
         """Reject settings that make a run meaningless or alias the signal."""
@@ -43,6 +49,10 @@ class EngineConfig:
             raise ValueError("dt must be > 0")
         if self.max_retries < 0:
             raise ValueError("max_retries must be >= 0")
+        if self.retry_policy not in ("legacy_model_changing", "dt_only"):
+            raise ValueError("retry_policy must be 'legacy_model_changing' or 'dt_only'")
+        if self.drive_time_mode not in ("legacy_step_index", "accepted_time"):
+            raise ValueError("drive_time_mode must be 'legacy_step_index' or 'accepted_time'")
         if len(self.retry_dt_factors) < self.max_retries:
             raise ValueError("retry_dt_factors must cover max_retries")
         if len(self.retry_mirror_factors) < self.max_retries:
@@ -90,51 +100,216 @@ class MembraneArena3x3:
         self.failures = 0
         self.circuit_breaker = False
         self.current_step = 0
+        self.accepted_time = 0.0
+        self.attempt_ledger: list[dict] = []
 
-    def _validate(self, candidate: np.ndarray) -> tuple[bool, str]:
-        """Validate an entire candidate lattice state before commit."""
+    def _validate_detailed(
+        self, candidate: np.ndarray, effective: dict | None = None
+    ) -> tuple[bool, str, dict]:
+        """Validate a candidate without observing invalid matrix data."""
         cfg = self.config.lattice
+        effective = effective or {
+            "dt": cfg.dt,
+            "coupling": cfg.coupling,
+            "dephasing": cfg.dephasing,
+            "mirror_strength": cfg.mirror_strength,
+        }
+        try:
+            candidate = np.asarray(candidate)
+        except (TypeError, ValueError):
+            candidate = np.asarray([])
+        shape = candidate.shape
+        if shape != self.lattice.state.shape:
+            reason = "invalid_candidate_shape"
+            return False, reason, {
+                "failed_guard": reason,
+                "guard_violations": [reason],
+                "offending_cells": ["lattice:shape"],
+                "offending_pairs": [],
+                "offending_by_guard": {reason: ["lattice:shape"]},
+                "metrics": {},
+                "thresholds": self._thresholds(),
+            }
+        if candidate.dtype.kind not in "fciu":
+            reason = "invalid_candidate_dtype"
+            return False, reason, {
+                "failed_guard": reason,
+                "guard_violations": [reason],
+                "offending_cells": ["lattice:dtype"],
+                "offending_pairs": [],
+                "offending_by_guard": {reason: ["lattice:dtype"]},
+                "metrics": {},
+                "thresholds": self._thresholds(),
+            }
 
+        invalid_cells: list[str] = []
         for i in range(3):
             for j in range(3):
                 rho = candidate[i, j]
                 if not is_valid_density_matrix(rho):
-                    return False, f"invalid_density_matrix[{i},{j}]"
+                    invalid_cells.append(f"{i},{j}")
+        if invalid_cells:
+            reason = f"invalid_density_matrix[{invalid_cells[0]}]"
+            return False, reason, {
+                "failed_guard": reason,
+                "guard_violations": ["invalid_density_matrix"],
+                "offending_cells": invalid_cells,
+                "offending_pairs": [],
+                "offending_by_guard": {"invalid_density_matrix": invalid_cells},
+                "metrics": {},
+                "thresholds": self._thresholds(),
+            }
 
-        observation = self.observer.observe(
-            candidate, self.lattice.reference, self.current_step + 1
-        )
-        healthy, reason = self.observer.is_healthy(observation)
-        if not healthy:
-            return False, reason
-
-        if not (
-            cfg.coupling_min <= cfg.coupling <= cfg.coupling_max
-            and cfg.dephasing_min <= cfg.dephasing <= cfg.dephasing_max
-            and cfg.mirror_min <= cfg.mirror_strength <= cfg.mirror_max
-        ):
-            return False, "calibrator_parameter_out_of_bounds"
-
-        return True, "ok"
-
-    def _validate_detailed(self, candidate: np.ndarray) -> tuple[bool, str, dict]:
-        """Validate a candidate and return rejection telemetry with it."""
-        ok, reason = self._validate(candidate)
         observation = self.observer.observe(
             candidate, self.lattice.reference, self.current_step + 1
         )
         report = self.observer.guard_report(observation)
-        if ok:
-            report["failed_guard"] = None
-        elif reason.startswith("invalid_density_matrix"):
+        violations = dict(report["offending_by_guard"])
+
+        configured_violations = []
+        effective_violations = []
+        if not np.isfinite(effective["dt"]) or effective["dt"] <= 0:
+            effective_violations.append("dt")
+        for name, low, high in (
+            ("coupling", cfg.coupling_min, cfg.coupling_max),
+            ("dephasing", cfg.dephasing_min, cfg.dephasing_max),
+            ("mirror_strength", cfg.mirror_min, cfg.mirror_max),
+        ):
+            if not np.isfinite(getattr(cfg, name)) or not low <= getattr(cfg, name) <= high:
+                configured_violations.append(name)
+            value = effective[name]
+            if not np.isfinite(value) or not low <= value <= high:
+                effective_violations.append(name)
+        if configured_violations:
+            violations["calibrator_parameter_out_of_bounds"] = [
+                f"lattice:configured_{name}" for name in configured_violations
+            ]
+        if effective_violations:
+            violations["effective_parameter_out_of_bounds"] = [
+                f"lattice:effective_{name}" for name in effective_violations
+            ]
+
+        reason = "ok"
+        healthy, observer_reason = self.observer.is_healthy(observation)
+        if not healthy:
+            reason = observer_reason
+        elif configured_violations:
+            reason = "calibrator_parameter_out_of_bounds"
+        elif effective_violations:
+            reason = "effective_parameter_out_of_bounds"
+        return reason == "ok", reason, {
+            **report,
+            "failed_guard": None if reason == "ok" else reason,
+            "guard_violations": [name for name, cells in violations.items() if cells],
+            "offending_by_guard": violations,
+            "offending_cells": list(dict.fromkeys(
+                item for cells in violations.values() for item in cells
+                if "-" not in item and not item.startswith("lattice:")
+            )),
+            "offending_pairs": [
+                item for cells in violations.values() for item in cells if "-" in item
+            ],
+            "thresholds": {
+                **report["thresholds"],
+                "failure_limit": self.config.failure_limit,
+                "parameter_bounds": {
+                    "dt": {"min_exclusive": 0.0},
+                    "coupling": [cfg.coupling_min, cfg.coupling_max],
+                    "dephasing": [cfg.dephasing_min, cfg.dephasing_max],
+                    "mirror_strength": [cfg.mirror_min, cfg.mirror_max],
+                },
+            },
+        }
+
+    def _validate(self, candidate: np.ndarray) -> tuple[bool, str]:
+        """Validate an entire candidate lattice state before commit."""
+        ok, reason, _ = self._validate_detailed(candidate)
+        return ok, reason
+
+    def _validate_with_telemetry(
+        self, candidate: np.ndarray, effective: dict
+    ) -> tuple[bool, str, dict]:
+        """Preserve validation overrides while retaining fail-closed checks."""
+        validator = self._validate
+        is_custom = (
+            getattr(validator, "__func__", None) is not MembraneArena3x3._validate
+            or "_validate" in self.__dict__
+        )
+        detailed_ok, detailed_reason, report = self._validate_detailed(
+            candidate, effective
+        )
+        if not is_custom:
+            return detailed_ok, detailed_reason, report
+
+        custom_ok, custom_reason = validator(candidate)
+        hard_violations = {
+            "invalid_candidate_shape",
+            "invalid_candidate_dtype",
+            "invalid_density_matrix",
+            "calibrator_parameter_out_of_bounds",
+            "effective_parameter_out_of_bounds",
+        }
+        unsafe = hard_violations.intersection(report["guard_violations"])
+        accepted = bool(custom_ok) and not unsafe
+        reason = (
+            detailed_reason if unsafe else custom_reason
+        )
+        if not accepted:
             report["failed_guard"] = reason
-            report["offending_cells"] = [reason.split("[", 1)[1].rstrip("]")]
-            report["offending_by_guard"] = {reason: report["offending_cells"]}
-        elif reason == "calibrator_parameter_out_of_bounds":
-            report["failed_guard"] = reason
-            report["offending_cells"] = ["lattice:parameters"]
-            report["offending_by_guard"] = {reason: ["lattice:parameters"]}
-        return ok, reason, report
+            report["guard_violations"] = list(dict.fromkeys(
+                [*report["guard_violations"], reason]
+            ))
+            report["offending_by_guard"].setdefault(reason, [])
+        return accepted, reason, report
+
+    def _thresholds(self) -> dict:
+        cfg = self.config.lattice
+        return {
+            **self.config.guards_dict(),
+            "parameter_bounds": {
+                "dt": {"min_exclusive": 0.0},
+                "coupling": [cfg.coupling_min, cfg.coupling_max],
+                "dephasing": [cfg.dephasing_min, cfg.dephasing_max],
+                "mirror_strength": [cfg.mirror_min, cfg.mirror_max],
+            },
+        }
+
+    def _provenance(self) -> dict:
+        root = Path(__file__).resolve().parents[1]
+        source_paths = (
+            Path(__file__),
+            Path(__file__).with_name("core.py"),
+            Path(__file__).with_name("lattice.py"),
+            Path(__file__).with_name("shields.py"),
+            Path(__file__).with_name("crystallize_injection.py"),
+        )
+        hashes = {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in source_paths
+        }
+        try:
+            commit = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True, capture_output=True, text=True,
+            ).stdout.strip()
+            dirty = bool(subprocess.run(
+                ["git", "-C", str(root), "status", "--porcelain",
+                 "--untracked-files=no"],
+                check=True, capture_output=True, text=True,
+            ).stdout.strip())
+        except (OSError, subprocess.CalledProcessError):
+            commit, dirty = None, None
+        return {
+            "commit": commit,
+            "dirty": dirty,
+            "source_sha256": hashes,
+            "python_version": platform.python_version(),
+            "numpy_version": np.__version__,
+            "seed": self.config.seed,
+            "seed_streams": {
+                "simulation": "numpy.default_rng(seed); shared by initialization and lattice dynamics",
+            },
+        }
 
     def step(self) -> dict:
         """Execute one transactional global update, with adaptive repair."""
@@ -148,6 +323,11 @@ class MembraneArena3x3:
             self.lattice.state, self.lattice.reference, self.current_step
         )
 
+        drive_time = (
+            self.accepted_time
+            if self.config.drive_time_mode == "accepted_time"
+            else self.current_step * self.config.lattice.dt
+        )
         action = self.calibrator.propose(
             observation,
             self.current_step,
@@ -155,6 +335,7 @@ class MembraneArena3x3:
             self.config.schumann_hz,
             self.config.schumann_amplitude,
             self.config.lattice.dt,
+            drive_time_seconds=drive_time,
         )
 
         # The calibrator never changes these; log the values in effect so the
@@ -164,34 +345,80 @@ class MembraneArena3x3:
         action.dephasing = lattice_cfg.dephasing
         action.mirror_strength = lattice_cfg.mirror_strength
 
+        effective = {
+            "dt": lattice_cfg.dt,
+            "mirror_strength": lattice_cfg.mirror_strength,
+            "coupling": lattice_cfg.coupling,
+            "dephasing": lattice_cfg.dephasing,
+        }
         candidate = self.lattice.propose_step(action.total_signal)
-        accepted, reason, report = self._validate_detailed(candidate)
+        accepted, reason, report = self._validate_with_telemetry(
+            candidate, effective
+        )
+        attempts = [{
+            "step": self.current_step + 1,
+            "attempt": 0,
+            "proposal": "initial",
+            "dt": effective["dt"],
+            "mirror_strength": effective["mirror_strength"],
+            "coupling": effective["coupling"],
+            "dephasing": effective["dephasing"],
+            "drive_time_seconds": drive_time,
+            "drive_time_mode": self.config.drive_time_mode,
+            "intervention_type": "none",
+            "accepted": bool(accepted),
+            "reason": reason,
+            **report,
+        }]
         repair_attempts: list[dict] = []
         accepted_via_repair = False
 
         if not accepted and self.config.adaptive_retry:
             for k in range(self.config.max_retries):
                 dt_eff = lattice_cfg.dt * self.config.retry_dt_factors[k]
-                mirror_eff = lattice_cfg.mirror_strength * self.config.retry_mirror_factors[k]
-                coupling_eff = lattice_cfg.coupling * self.config.retry_coupling_factors[k]
+                if self.config.retry_policy == "dt_only":
+                    mirror_eff = lattice_cfg.mirror_strength
+                    coupling_eff = lattice_cfg.coupling
+                else:
+                    mirror_eff = lattice_cfg.mirror_strength * self.config.retry_mirror_factors[k]
+                    coupling_eff = lattice_cfg.coupling * self.config.retry_coupling_factors[k]
+                effective = {
+                    "dt": dt_eff,
+                    "mirror_strength": mirror_eff,
+                    "coupling": coupling_eff,
+                    "dephasing": lattice_cfg.dephasing,
+                }
                 variant = self.lattice.propose_step(
                     action.total_signal,
                     dt=dt_eff,
                     mirror_strength=mirror_eff,
                     coupling=coupling_eff,
                 )
-                ok, variant_reason = self._validate(variant)
-                self.repair_attempts_total += 1
-                repair_attempts.append(
-                    {
-                        "attempt": k + 1,
-                        "dt": dt_eff,
-                        "mirror_strength": mirror_eff,
-                        "coupling": coupling_eff,
-                        "accepted": bool(ok),
-                        "reason": variant_reason,
-                    }
+                ok, variant_reason, variant_report = self._validate_with_telemetry(
+                    variant, effective
                 )
+                self.repair_attempts_total += 1
+                intervention = (
+                    "numerical_backtracking"
+                    if mirror_eff == lattice_cfg.mirror_strength
+                    and coupling_eff == lattice_cfg.coupling
+                    else "model_intervention"
+                )
+                attempt = {
+                    "step": self.current_step + 1,
+                    "attempt": k + 1,
+                    "proposal": "repair",
+                    **effective,
+                    "drive_time_seconds": drive_time,
+                    "drive_time_mode": self.config.drive_time_mode,
+                    "intervention_type": intervention,
+                    "accepted": bool(ok),
+                    "reason": variant_reason,
+                    **variant_report,
+                }
+                attempts.append(attempt)
+                repair_attempts.append(attempt)
+                report = variant_report
                 if ok:
                     candidate, accepted, reason = variant, True, "ok"
                     accepted_via_repair = True
@@ -200,9 +427,14 @@ class MembraneArena3x3:
                     # the variant's dt/mirror/coupling are in
                     # repair_attempts, not in the calibrator's proposal.
                     break
+                reason = variant_reason
+
+        final_step_reason = "ok" if accepted else reason
+        self.attempt_ledger.extend(attempts)
 
         if accepted:
             self.lattice.commit(candidate)
+            self.accepted_time += effective["dt"]
             self.failures = 0
         else:
             # One failure per step, counted only after all repair
@@ -211,19 +443,21 @@ class MembraneArena3x3:
             self.rejections.append(
                 {
                     "step": self.current_step + 1,
-                    "reason": reason,
+                    "reason": final_step_reason,
+                    "final_step_reason": final_step_reason,
                     "failed_guard": report["failed_guard"],
                     "offending_cells": report["offending_cells"],
                     "offending_by_guard": report["offending_by_guard"],
                     "metrics": report["metrics"],
                     "thresholds": report["thresholds"],
                     "repair_attempts": repair_attempts,
+                    "attempts": attempts,
                 }
             )
             if self.failures >= self.config.failure_limit:
                 self.circuit_breaker = True
 
-        self.calibrator.mark(action, accepted, reason)
+        self.calibrator.mark(action, accepted, final_step_reason)
         self.calibrations.append(action.to_dict())
 
         post = self.observer.observe(
@@ -234,12 +468,15 @@ class MembraneArena3x3:
 
         return {
             "status": "accepted" if accepted else "rejected",
-            "reason": reason,
+            "reason": final_step_reason,
+            "final_step_reason": final_step_reason,
             "step": self.current_step,
             "observation": post.to_dict(),
             "calibration": action.to_dict(),
             "accepted_via_repair": accepted_via_repair,
             "repair_attempts": repair_attempts,
+            "attempts": attempts,
+            "accepted_time": self.accepted_time,
         }
 
     def run(self) -> dict:
@@ -268,6 +505,7 @@ class MembraneArena3x3:
             ),
             "steps_requested": self.config.steps,
             "steps_executed": len(self.observations),
+            "accepted_time": self.accepted_time,
             "accepted_steps": accepted,
             "rejected_steps": len(self.calibrations) - accepted,
             "guards": self.config.guards_dict(),
@@ -276,6 +514,9 @@ class MembraneArena3x3:
             "rejections": self.rejections,
             "repair_attempts_total": self.repair_attempts_total,
             "repair_accepts": self.repair_accepts,
+            "attempt_ledger": self.attempt_ledger,
+            "configuration": asdict(self.config),
+            "provenance": self._provenance(),
             "final": final,
             "observations": self.observations,
             "calibrations": self.calibrations,
