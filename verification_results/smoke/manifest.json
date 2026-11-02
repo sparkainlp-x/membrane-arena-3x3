@@ -1,0 +1,40 @@
+{
+  "command": "/usr/bin/python scripts/scientific_verification.py --config verification_configs/smoke.json --out-dir verification_results/smoke --split all",
+  "commit_and_dirty_state": {
+    "commit": "1aa54df23ecb1222b7503210c39470bb66f97cf8",
+    "dirty": false
+  },
+  "configuration_sha256": "5447b0b47f68b3b89bd3d8bbb1bd6118a9cad890bd798e0e6fe1ae8db9123322",
+  "held_out_freeze_check": null,
+  "numpy_version": "2.5.4",
+  "profile": "smoke",
+  "protocol_sha256": "bc029d1bb48b38edbe32972adb06cba6210e4ef0f1a4d3aba1b7f485f3c2db40",
+  "python_version": "3.12.3",
+  "runtime_fields_in_deterministic_outputs": false,
+  "seed_splits": {
+    "development": [
+      0,
+      1
+    ],
+    "held_out": [],
+    "validation": []
+  },
+  "seed_streams": {
+    "engine": "numpy.default_rng(seed), shared by initialization and lattice dynamics",
+    "wave_memory": {
+      "channel_drift": "SeedSequence([seed, trial, crosstalk_index, delay_index, 201])",
+      "codebook": "SeedSequence([seed, 401])",
+      "message": "SeedSequence([seed, 101])",
+      "noise": "SeedSequence([seed, trial, crosstalk_index, delay_index, 301])"
+    }
+  },
+  "source_sha256": {
+    "membrane_arena_3x3/core.py": "5751db10dfc7ace03a097e1bbb5b7454380e4c3d3f8734a019e524ae4e3aae4c",
+    "membrane_arena_3x3/engine.py": "615abcee611fdf623c532a663f36885e44c9cd5557b3604e7d5a596ed333e46d",
+    "membrane_arena_3x3/lattice.py": "bce8a8c3199faaa65cb7c163fba4c6a9e5f6aa20ea9842bf7387e435a8eb32bb",
+    "membrane_arena_3x3/shields.py": "27af94b1b0e647ecec8a1646a8018c00f1fab121fefaec372840696eebd70adf",
+    "membrane_arena_3x3/wave_memory.py": "571af87f856ccfadb5631d2360c659bb672213f84cf7ba560e3b6ed5a9033ef1",
+    "scripts/scientific_verification.py": "520d0a99e5b71f8a013d1d7542f956d801bdc11b1bdc37f92b477c11589be1d9"
+  },
+  "split": "all"
+}

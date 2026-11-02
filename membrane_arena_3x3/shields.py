@@ -258,9 +258,16 @@ class YangObserverShield:
     def guard_report(self, observation: Observation) -> dict:
         """Return rejection telemetry: failed guard, cells, metrics, thresholds."""
         healthy, reason = self.is_healthy(observation)
+        offending_pairs = [
+            item
+            for items in observation.offending_by_guard.values()
+            for item in items
+            if "-" in item
+        ]
         return {
             "failed_guard": None if healthy else reason,
             "offending_cells": observation.offending_cells,
+            "offending_pairs": offending_pairs,
             "offending_by_guard": observation.offending_by_guard,
             "metrics": {
                 "mean_purity": observation.mean_purity,
@@ -312,6 +319,7 @@ class YinCalibratorShield:
         schumann_hz: float,
         schumann_amplitude: float,
         dt: float,
+        drive_time_seconds: float | None = None,
     ) -> CalibrationAction:
         """Return a clipped calibration proposal based on observer telemetry."""
         feedback = (
@@ -326,8 +334,9 @@ class YinCalibratorShield:
 
         schumann = 0.0
         if schumann_enabled:
+            phase_time = step * dt if drive_time_seconds is None else drive_time_seconds
             schumann = schumann_amplitude * np.sin(
-                2 * np.pi * schumann_hz * step * dt
+                2 * np.pi * schumann_hz * phase_time
             )
             schumann = float(
                 np.clip(schumann, -self.max_signal, self.max_signal)
