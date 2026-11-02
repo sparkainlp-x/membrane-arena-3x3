@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Merged tree (PR #8 rebase onto the scientific upgrade): full suite 171 passed, 0 failed (2026-11-02). The one failure in the first merged run was a stale branch expectation in tests/test_multiseed_sweep.py (stock steps 8, predating the upgrade's retry; corrected to 12, matching main's test_experiments).
+- Scientific upgrade (SYNTHETIC, no physical claim): `GuardConfig` makes all guard thresholds configurable and logged (`residual_target`, `divergence_min`, `divergence_max`, `purity_floor`, `entropy_target`, plus `failure_limit` from `EngineConfig`); bounded adaptive retry is on by default in the stock engine (dt × 0.5/0.25/0.125, mirror softened, coupling reduced, one failure counted only after all repair attempts fail); `mean_coherence` → `mean_purity` and `lyapunov_proxy` → `stability_penalty` (old names kept as read-only properties), with true off-diagonal coherence measures added; `divergence_min` is now a real `divergence_below_minimum` check; `operator_mode="exact"` adds exact unitary conjugation and trace-preserving off-diagonal phase damping as independently testable stages, with `"legacy"` kept as the default for reproducibility; `scripts/benchmark.py` adds deterministic seed/parameter sweeps, survival curves and CSV/JSON outputs. The Crystallize injection subclass is unchanged in behaviour. See the README section "Scientific upgrade".
+- Measured, seed 42, 200 steps requested: default adaptive run 12 steps / 7 accepted / 4 repair accepts (was 8 / 3 without retry); exact mode first fails on `purity_too_low` instead of `residual_above_target`.
+- Full suite after the upgrade: 136 passed, 0 failed (2026-10-29). An intermediate full run showed 9 failures, all in tests pinning the old API (finite forced-outcome iterators, old summary keys, old propose_step signature, observer-attribute thresholds, old stock-step counts); each was fixed by moving the test to the new API, except the injection test, which was split to record that stock retry subsumes the injection on seed 42 (see README).
+
+## Unreleased (earlier)
+
 - Added an opt-in Crystallize injection engine, `membrane_arena_3x3/crystallize_injection.py` (SYNTHETIC classical software). `MembraneArena3x3WithInjection` tries up to 3 variant proposals (smaller `dt`, softened mirror) on a rejected step, validates them with the unmodified `_validate`, and keeps a calibration ledger (Brier score, `100 (1 - 4 Brier)` points, 0.8 cost per variant). It uses its own random stream, `default_rng(seed + 10000007)`, `max_attempts=0` is identical to stock, and the stock engine, guards, thresholds, breaker and CLI are unchanged.
 - It does not cure the arena: in the measured sweep (seeds 42, 0, 1, 2, 3) every injected run still latched the breaker, after 10 or 11 steps instead of 8 or 9. See the README section "Crystallize injection (opt-in)" and `docs/injection_results.md`.
 - Renamed the injection settings to `first_commit`, `first_factor` and `mirror_variant`; the default commit is now 0.35 (it was 0.75 earlier in this unreleased PR). The commit changes only the ledger, so the dynamics are unchanged. A variant step factor is capped below 1.
@@ -15,6 +22,10 @@
 - Amendment A1 now records the primary ledger scoring as two-forecast on the basis of the author's instruction of 2026-10-25 (not as an approval of the amendment text).
 - `experiments/rescoring.py` now pins the engine's ledger to the two-forecast scoring and keeps the per-attempt scoring for side-by-side reporting.
 - Added `scripts/injection_sweep.py` and 24 tests (the supplied contract tests, including the adaptive ones, plus added properties). 127 tests in total after the experiment, multi-seed and results-build tests.
+- Renamed the injection settings to `first_commit`, `first_factor` and `mirror_variant`; the default commit is now 0.35 (it was 0.75 earlier in this unreleased PR). The commit changes only the ledger, so the dynamics are unchanged. A variant step factor is capped below 1.
+- Added `InjectionConfig(adaptive=True)` (default off): the first commit of each event is the smoothed pass rate `(passes + 4 * first_commit) / (events + 4)`. It affects only the ledger, never acceptance, guards, thresholds or the breaker. The summary has `adaptive_pass_rate` (None when off).
+- Measured here (SYNTHETIC, one machine): fixed 0.35 is right near the stock pass rate (0.31 over 36 events) and wrong in the evolved-genome regime (about 0.9 pass rate), where an adaptive commit scores positive and ends near 0.87 to 0.91. 0.35 is a stock-regime default only. The injection does not cure the breaker. The phase-damping experiment and evolution fitness figures from the design note are not reproduced here.
+- Added `scripts/injection_sweep.py` and 23 tests (the supplied contract tests, including the adaptive ones, plus added properties). 86 tests in total.
 
 ## 0.1.0 (unreleased)
 

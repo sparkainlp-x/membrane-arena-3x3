@@ -1,10 +1,12 @@
 """Pins the measured default behavior documented under "Known limits".
 
 With the default settings the lattice drifts out of the guard envelope within
-a few steps, the update is rejected, the state does not change, the retry is
-therefore identical, and the breaker latches after five identical rejections.
-If the model or the defaults are changed on purpose, update these numbers and
-the README together.
+a few steps. With adaptive retry on (the default), each counted failure
+follows three distinct repair attempts, so the breaker latches after five
+counted failures, not five identical rejections; without retry
+(adaptive_retry=False) the old identical-retry behaviour returns and the
+run stops at 8 steps on seed 42. If the model or the defaults are changed
+on purpose, update these numbers and the README together.
 """
 
 import pytest

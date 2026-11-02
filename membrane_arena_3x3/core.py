@@ -70,6 +70,60 @@ def _sqrtm(rho: np.ndarray) -> np.ndarray:
     vals = np.clip(vals, 0.0, None)
     return (vecs * np.sqrt(vals)) @ vecs.conj().T
 
+def mean_off_diagonal_coherence(rho: np.ndarray) -> float:
+    """Return the mean |rho[i, j]| over off-diagonal entries.
+
+    This is a true off-diagonal coherence measure, unlike mean purity
+    (tr(rho^2)), which mixes diagonal populations with off-diagonal terms.
+    """
+    if rho.shape[0] < 2:
+        return 0.0
+    mask = ~np.eye(rho.shape[0], dtype=bool)
+    return float(np.mean(np.abs(rho[mask])))
+
+
+def max_off_diagonal_coherence(rho: np.ndarray) -> float:
+    """Return the largest |rho[i, j]| over off-diagonal entries."""
+    if rho.shape[0] < 2:
+        return 0.0
+    mask = ~np.eye(rho.shape[0], dtype=bool)
+    return float(np.max(np.abs(rho[mask])))
+
+
+def apply_phase_damping_tp(rho: np.ndarray, gamma: float) -> np.ndarray:
+    """Trace-preserving phase damping: damp off-diagonals only.
+
+    rho[i, j] -> rho[i, j] * exp(-gamma * |i - j|) for i != j; the diagonal
+    (populations) is left exactly unchanged, so the trace is preserved by
+    construction and no renormalization is needed. The factor matrix
+    exp(-gamma * |i - j|) is positive semidefinite, so this is a completely
+    positive trace-preserving map. Unlike the legacy ``apply_dephasing``
+    below, it cannot purify a state by shifting weight to low indices.
+    """
+    if gamma <= 0:
+        return rho
+    idx = np.arange(rho.shape[0])
+    factors = np.exp(-gamma * np.abs(idx[:, None] - idx[None, :]))
+    damped = rho * factors
+    return (damped + damped.conj().T) / 2
+
+
+def exact_unitary_step(rho: np.ndarray, hamiltonian: np.ndarray, dt: float) -> np.ndarray:
+    """Return U rho U^dagger with U = exp(-i H dt), exactly.
+
+    The Hermitian Hamiltonian is diagonalized once (H = V diag(e) V^dagger),
+    so U = V diag(exp(-i e dt)) V^dagger is unitary to numerical precision.
+    This preserves trace and purity exactly (up to round-off), unlike an
+    explicit Euler step of the commutator. It is independently testable:
+    a pure state stays pure and a mixed state's purity is unchanged.
+    """
+    vals, vecs = np.linalg.eigh((hamiltonian + hamiltonian.conj().T) / 2)
+    phases = np.exp(-1j * vals * dt)
+    unitary = (vecs * phases) @ vecs.conj().T
+    out = unitary @ rho @ unitary.conj().T
+    return (out + out.conj().T) / 2
+
+
 def apply_dephasing(rho: np.ndarray, gamma: float) -> np.ndarray:
     """Damp matrix entries by exp(-gamma * (i + j)) and renormalize.
 

@@ -59,36 +59,75 @@ The CLI prints a short summary; `--json` writes every observation and calibratio
 
 ## Measured behavior of the default settings
 
-Measured on one machine (Python 3.13.5, NumPy 2.5.4) by `scripts/injection_sweep.py` (also written to `docs/injection_results.md`), 200 steps requested, default settings. The last two columns before the cost are the event-score totals at a fixed commit of 0.35 (the default) and of 0.75:
+Measured on one machine (Python 3.13.5, NumPy 2.5.4), seed 42, 200 steps requested, about 0.3 s wall time per run:
 
-| seed | base steps / accepted | injected steps / accepted | injection passes of events | event-score total (commit 0.35) | event-score total (commit 0.75) | sampling cost | final status |
+| Run | Steps executed | Accepted | Rejected | Status | Final max residual | Final min purity | Final max divergence |
 |---|---|---|---|---|---|---|---|
-| 42 | 8 / 3 | 11 / 6 | 3 of 8 | -40.2 | -184.7 | 15.2 | circuit_breaker_open |
-| 0 | 9 / 4 | 10 / 5 | 1 of 6 | 99.4 | -333.1 | 13.6 | circuit_breaker_open |
-| 1 | 8 / 3 | 10 / 5 | 2 of 7 | 37.1 | -269.9 | 15.2 | circuit_breaker_open |
-| 2 | 8 / 3 | 11 / 6 | 3 of 8 | -40.2 | -184.7 | 15.2 | circuit_breaker_open |
-| 3 | 9 / 4 | 11 / 6 | 2 of 7 | 12.0 | -242.5 | 13.6 | circuit_breaker_open |
+| default | 8 | 3 | 5 | circuit_breaker_open | 0.1507 | 0.1191 | 0.4804 |
+| `--schumann` | 8 | 3 | 5 | circuit_breaker_open | 0.1508 | 0.1191 | 0.4804 |
 
-Ablation, the same loop with the mirror left at the stock 0.10 (smaller `dt` only):
+Across seeds 0 to 19 the default run latched the breaker in all 20 runs, after 8 or 9 steps, and every rejection was `residual_above_target`. Changing only the lattice parameters on the command line (dephasing 0, mirror 0, smaller `dt`, and combinations tried on 5 seeds) still latched the breaker after 6 to 12 steps. These numbers describe this synthetic model and these defaults only; they say nothing about any physical system. The test suite pins the default behavior (see `tests/test_default_behavior.py`).
 
-| seed | base steps / accepted | injected steps / accepted | injection passes of events | event-score total (commit 0.35) | event-score total (commit 0.75) | sampling cost | final status |
-|---|---|---|---|---|---|---|---|
-| 42 | 8 / 3 | 9 / 4 | 1 of 6 | 81.8 | -316.7 | 12.8 | circuit_breaker_open |
-| 0 | 9 / 4 | 9 / 4 | 0 of 5 | 151.6 | -390.9 | 12.0 | circuit_breaker_open |
-| 1 | 8 / 3 | 9 / 4 | 1 of 6 | 106.9 | -344.1 | 14.4 | circuit_breaker_open |
-| 2 | 8 / 3 | 9 / 4 | 1 of 6 | 81.8 | -316.7 | 12.8 | circuit_breaker_open |
-| 3 | 9 / 4 | 9 / 4 | 0 of 5 | 151.6 | -390.9 | 12.0 | circuit_breaker_open |
+## Scientific upgrade (configurable guards, adaptive retry, benchmark)
 
+The stock defaults above are kept for reproducibility, and the upgrade below is layered on top of them without changing a guard value by default:
+
+- **Configurable guards.** `GuardConfig` holds `residual_target` (0.20), `divergence_min` (0.02), `divergence_max` (0.60), `purity_floor` (0.05) and `entropy_target` (0.5); `EngineConfig.failure_limit` (5) is logged with them. Every run summary's `guards` object logs all six, and the CLI exposes them as `--residual-target`, `--divergence-min`, `--divergence-max`, `--purity-floor`, `--entropy-target` and `--failure-limit`.
+- **Bounded adaptive retry (default on).** On a rejection the stock engine now tries up to `max_retries` (3) variants — `dt` × 0.5, 0.25, 0.125, mirror strength × 0.5, 0, 0, coupling × 0.5, 0.25, 0 — and counts **one** failure only after all variants fail. A run can therefore no longer stop from repeated identical rejections: each counted failure carries distinct repair attempts. Use `--no-adaptive-retry` to reproduce the stock death spiral. Measured, seed 42, 200 steps requested: with retry 12 steps / 7 accepted / 4 repair accepts; without retry 8 steps / 3 accepted.
+- **Rejection telemetry.** Every counted failure is recorded in `summary["rejections"]` with the failed guard, the offending cells (per guard), the metric values at the candidate, the thresholds in effect, and the repair attempts tried.
+- **Metric names.** `mean_coherence` is now `mean_purity` and `lyapunov_proxy` is now `stability_penalty` (the old names remain as read-only properties on the observation object, but `to_dict()` and JSON output use the new names). True off-diagonal measures are added: `mean_off_diagonal_coherence` and `max_off_diagonal_coherence` (mean / max |rho[i, j]|, i != j).
+- **`divergence_min` is now a real check.** A lattice whose mean pairwise divergence falls below it is rejected as `divergence_below_minimum` (collapsed/synchronised). The default 0.02 is far below any divergence a random lattice shows, so stock behaviour is unchanged.
+- **Improved operators, opt-in.** `LatticeConfig.operator_mode` is `"legacy"` (default, published update exactly) or `"exact"`: exact unitary conjugation `exp(-i H dt)` (preserves trace and purity to numerical precision) and trace-preserving off-diagonal phase damping `exp(-gamma |i - j|)` (diagonal untouched, no renormalisation). The stages are independently testable methods on the lattice (`unitary_stage`, `dissipative_stage`, `interaction_delta`, `mirror_stage`). Measured, seed 42: exact mode first fails on `purity_too_low`, not on `residual_above_target` — the operators change the failure mode, they do not by themselves cure the breaker.
+- **API notes for subclasses and mocks.** `propose_step` now accepts `dt`, `mirror_strength`, `coupling`, `dephasing` and `operator_mode` overrides; any lattice subclass that overrides it (for example the phase-damping experiment) must accept those keywords, even if it ignores them. Guard thresholds live in `GuardConfig`; the observer's plain threshold attributes are read-only mirrors of it, so setting them after construction no longer changes a check. The stock adaptive retry subsumes the Crystallize injection on seed 42 (stock 12 steps / 7 accepted vs injected 11 / 6 with retry on; with retry off the injection still extends 8 -> 11) — the injection's ledger value is unchanged, its step-count advantage is not.
+- **Benchmark.** `scripts/benchmark.py` runs seed sweeps (default 0–99), dt / coupling / operator-mode sweeps, survival curves and metric distributions, and writes deterministic CSV/JSON (no timestamps, so a re-run is byte-identical) plus optional survival-curve plots. Example: `python scripts/benchmark.py --out-dir benchmark_results --seeds 0-99 --no-plots`.
+
+The upgrade does not change what the model is: synthetic classical software, no quantum hardware, no physical holography, no biological, medical or consciousness claim. The Crystallize injection subclass is unchanged in behaviour — it overrides `step()` and still runs its own variant loop — and its tests still pass against the upgraded engine.
+
+## Known limits
+
+These are properties of the model as published, not bugs that were fixed. Statements marked "exploratory" come from throwaway experiments that are not part of the test suite.
+
+1. **The default run stops after about 8 steps without retry, 12 with it.** The default dynamics sharpen the cells (minimum purity goes from about 0.07 to 0.12 in 8 steps) faster than the guards allow. Without adaptive retry, the first rejection leaves the state unchanged, the calibrator signal depends only on the state, so the retry is the same proposal and is rejected again for the same reason; five identical rejections latch the breaker, and with the sinusoid off, "5 consecutive failures" is effectively "1 failure". With the default adaptive retry (see Scientific upgrade above), each counted failure follows three distinct repair attempts, and seed 42 reaches 12 steps / 7 accepted before the breaker latches. The breaker still latches: retry buys steps, it does not cure the drift.
+2. **The guards sit close to the random starting states.** A random 32-dimensional state has purity near 2/32, about 0.06, against a purity floor of 0.05, and pairwise divergence near 0.4 to 0.5 against a maximum of 0.6. The residual guard is the largest entry of a trace-one matrix, so 0.2 is large for mixed states and is crossed as soon as cells sharpen. Exploratory: with the residual guard widened to 1.0 and the divergence maximum to 0.99, runs on seeds 0 to 4 lasted 20 to 30 steps, and the seed-0 run ended with minimum purity 0.80 and maximum divergence 0.99, that is, the cells collapse toward different nearly pure states, which is the opposite of the stated target of bounded divergence.
+3. **`apply_dephasing` is not phase damping.** It multiplies entries by `exp(-gamma (i + j))` and renormalizes, which also damps the diagonal and shifts weight to low basis indices. It acts as a purifier. The legacy mode keeps it as published, with a docstring that says what it does. The exact mode replaces it with `apply_phase_damping_tp`, a trace-preserving damping of off-diagonal entries only, `exp(-gamma |i - j|)`; exploratory: that change alone changed the default run to 18 steps (breaker latched on the divergence guard).
+4. **The commutator term is an explicit Euler step, not a unitary, in legacy mode.** The Hamiltonians have spectral norm near 10.5 and `dt` is 0.05, so `dt * ||H||` is about 0.5. The projection step hides the resulting loss of norm preservation. Exploratory: replacing it with the exact `exp(-i H dt)` conjugation did not change the 8-step outcome, so the early stop is not an integrator artifact. The exact mode now ships that replacement as `exact_unitary_step`; combined with trace-preserving damping it latched after 7 steps on the purity floor in the exploratory run, and after 8 steps (first failure `purity_too_low`) in the upgraded engine on seed 42.
+5. **The calibrator is saturated and weak.** Its coherence target (0.85) is far above the purity of these states (about 0.06 to 0.15), so its feedback sits at the clip (+0.05) at every step of the default runs (`test_default_feedback_is_saturated_at_the_clip`). Its only effect is a pull toward the initial state of strength `signal * dt`, about 0.0025 per step, against a purity filter (exponent 1.1) applied at every step. It never proposes new coupling, dephasing or mirror values: the `coupling`, `dephasing` and `mirror_strength` fields of each logged action record the values in effect, which do not change. The parameter-bound check therefore only catches out-of-range settings given by the user (for example `--coupling 0.5`), which then reject every step.
+6. **The 7.83 Hz sinusoid is nearly inert.** It has amplitude 0.02 and is added to a feedback that is already at the clip of 0.05, so the total is clipped and only the negative half of each cycle survives. At `dt = 0.05` the signal is sampled at 20 Hz, about 2.55 samples per cycle; that is below the Nyquist limit of 10 Hz, so it does not alias, but it is a crude sampling of a sinusoid, and at those sample points it equals the negated 12.17 Hz sinusoid. Configurations at or above the limit are rejected. The default runs with and without the sinusoid agree to better than 0.001 in the final metrics (`test_the_sinusoid_barely_changes_a_default_run`). The time unit of `dt` is a simulation unit; "Hz" has no physical meaning here.
+7. **The coupling term is almost inert.** Below the resonance threshold (0.9) the drive is negative, so neighbours repel; random states have fidelity near 0.55, and the largest per-step entry change from the coupling term is about 5e-6 against about 2.6e-2 for the damping filter. Final metrics change in the third or fourth decimal between coupling 0 and the maximum 0.10.
+8. **The old name `mean_coherence` was mean purity**, not an off-diagonal coherence measure, and duplicates `min_purity` in what it measures. It is now renamed `mean_purity`, and true off-diagonal measures (`mean_off_diagonal_coherence`, `max_off_diagonal_coherence`) are reported alongside it.
+9. **The old name `lyapunov_proxy` was not a Lyapunov function.** It is a weighted penalty with an entropy target (now configurable as `entropy_target`, default 0.5). It is now renamed `stability_penalty`. Exploratory: it rose in 9 of 24 consecutive steps in one relaxed run, so nothing guarantees it decreases.
+10. **`divergence_min` was unused** by any check. It is now a real check (`divergence_below_minimum` on mean pairwise divergence); the default 0.02 does not change stock behaviour.
+11. **One seed means one lattice.** Results from a single seed describe that random instance. Only seeds 0 to 19 were tried for the default settings.
+12. **Platforms.** The 63 tests passed locally on Python 3.10, 3.11, 3.12 and 3.13 on one Linux machine, and CI runs 3.10 to 3.13 on Ubuntu. Other operating systems, other NumPy versions and run time on other hardware were not tested.
+
+## Crystallize injection (opt-in)
+
+**SYNTHETIC classical software; no physical claim.** Known limit 1 says the stock engine retries the identical proposal after a rejection. `MembraneArena3x3WithInjection` (in `membrane_arena_3x3/crystallize_injection.py`) is an opt-in subclass that, on a rejected step only, tries up to `max_attempts` (default 3) variant proposals before counting the failure:
+
+1. **Commit** a probability `p` (`first_commit`, default 0.35) that a shrunk variant passes the guards. With `adaptive=True` (default off) the first commit of each event is instead the smoothed pass rate `(passes + 4 * first_commit) / (events + 4)` over earlier events, starting at `first_commit`. The commit changes only the ledger, never whether a step is accepted.
+2. **Sample** a variant: `dt` times `first_factor` (default 0.5, jittered by one `uniform(0.8, 1.2)` draw per attempt from `default_rng(seed + 10000007)`, so the main generator is never touched) and the mirror strength softened to `mirror_variant` (default 0.0). The variant factor is `min(factor * jitter, 0.99)`.
+3. **Validate** it with the engine's own, unmodified `_validate`. Only a variant that passes is committed (and logged as an accepted step); a failed variant leaves the lattice unchanged.
+4. **Revise** after a miss: `p` moves halfway toward 0.5 and the step shrinks again (by 0.5 per attempt).
+5. **Score** with the Crystallize formulas: Brier = (p - truth)^2, points = 100 (1 - 4 Brier). Exactly two forecasts are scored per event: the first commit and the last commit (the one used for the last variant tried). Event score = 0.5 * points(p_first) + 0.5 * points(p_last) - cost, where cost is 0.8 per variant tried. Events carry `calibration_first` and `calibration_revised`; attempts no longer carry per-variant points.
+
+```python
+from membrane_arena_3x3.engine import EngineConfig
+from membrane_arena_3x3.crystallize_injection import run_simulation_with_injection
+
+summary = run_simulation_with_injection(EngineConfig(steps=200, seed=42))
+summary["injection_passes"], summary["injection_score_total"], summary["injections"]
+```
+
+With `InjectionConfig(max_attempts=0)` the subclass delegates to the stock `step()` and behaves exactly like the stock engine. The stock `MembraneArena3x3`, the CLI and the package exports are unchanged.
+
+**What it does NOT do:** it does **not** cure the arena. It never changes a guard, a threshold, a parameter bound or the circuit breaker, and every injected run below still ends with the breaker open; it adds a few steps and a calibration ledger. The ledger is meant to expose miscalibration: a fixed commit of 0.75 against a usually-false outcome is overconfident and scores negative, and the Brier score says so.
+
+Measured tables for the aligned engine (two-forecast scoring, seed + 10000007 jitter stream) are in 'Results and reproduction' and 'Multi-seed sweep' below and in `docs/RESULTS-injection.md`; the per-variant tables previously shown here are superseded and are not carried forward.
 ### Results and reproduction
-
 The pre-registered analysis (100 confirm seeds per regime, 12 confirmatory tests with Holm correction), the comparison before and after aligning the engine to the author's original, the negative controls and the 50-seed sweep are written up with only measured numbers in [docs/RESULTS-injection.md](docs/RESULTS-injection.md) (protocol and its Amendment A1: [docs/PREREGISTRATION-injection.md](docs/PREREGISTRATION-injection.md)). `make results` regenerates every number in it; `make results-offline` re-renders it from the cached raw runs. A test checks that the committed file equals the generated output.
-
 ### Multi-seed sweep (seeds 0 to 49)
-
 `python scripts/injection_multiseed.py --write` runs 50 seeds (200 steps requested) for the default setting and the dt-only ablation, scores the commit policies under both the engine's two-forecast scoring and the per-attempt scoring, and reports means with 95% bootstrap intervals, pass rates, breaker counts and paired differences against the stock engine. The full tables and the "Honest limits" are in `docs/injection_results.md` (section between the multiseed markers); the raw per-seed runs are in `experiments/results/multiseed_runs.jsonl`. In short, as measured: the injection adds accepted steps (see the paired difference in that table), the breaker still latched in every run, and the sign of a policy's ledger score depends on the scoring rule. It does not cure the arena.
-
 ### Commit policy and regime dependence
-
 The commit never changes acceptance, so the dynamics are identical under every policy; only the ledger differs. The table below is the stock regime, measured on this machine (SYNTHETIC). Scores are event-score totals in points (two forecasts per event, minus 0.8 per variant).
 
 | seed | steps / accepted | passes of events | fixed 0.75 | fixed 0.35 | adaptive from 0.35 | adaptive from 0.75 | adaptive final commit (from 0.35) |
@@ -116,7 +155,6 @@ In that regime about 0.9 of the variants pass. A fixed 0.35 is underconfident an
 **Not reproduced here.** The design note also describes a true phase-damping experiment and fitness values from the evolution run (fitness, mean executed and accepted counts, a held-out seed result). The phase-damping code was not supplied and the fitness function was not available, so neither is part of this repository and no claim is made about them. The injection does not cure the breaker in any regime measured here.
 
 These numbers describe this synthetic model and these settings only. Regenerate them with `python scripts/injection_sweep.py`.
-
 ## Guard rules
 
 - The observer works on read-only views, so an accidental write inside it raises instead of changing the lattice (`tests/test_observer.py`).
@@ -132,7 +170,7 @@ These are software checks inside a toy model. They are not safety mechanisms for
 pytest -q
 ```
 
-127 tests (63 for the stock arena, 64 for the opt-in injection, the experiment helpers, the multi-seed script and the results build): validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, and the pinned default behavior.
+171 tests in total: the scientific-upgrade suite plus the injection experiment, multi-seed and results-build tests: validity of the density-matrix primitives, observer read-only behavior on locked arrays, all-or-nothing rejection, breaker behavior under forced failures, determinism by seed, configuration limits, the CLI, the pinned default behavior, configurable guards, adaptive retry, trace-preserving operators, benchmark determinism, and the measured dt/coupling hypotheses. Full suite: 171 passed, 0 failed (2026-11-02, ~12 minutes, the 200-step hypothesis runs dominate).
 
 ## Credit
 

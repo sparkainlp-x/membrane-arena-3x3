@@ -70,7 +70,10 @@ def test_splice_is_idempotent_and_replaces_only_its_block():
 
 def test_collect_seed_matches_a_direct_run_and_render_runs():
     r = ms.collect_seed(42)
-    assert r["stock"]["steps"] == 8
+    # Stock run moved 8 -> 12 steps on the merged engine: the scientific
+    # upgrade's bounded adaptive retry (main's test_experiments asserts
+    # stock_steps == 12 for the same seed-42 run). Branch value predates it.
+    assert r["stock"]["steps"] == 12
     inj = r["injected"]["default"]
     assert (inj["steps"], inj["accepted"]) == (11, 6)
     assert sum(1 for _, p in inj["events"] if p) == 3
