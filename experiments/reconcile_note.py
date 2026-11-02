@@ -10,6 +10,10 @@ engine. Two differences are tested here, each separately and together:
          note:   per event, 0.5 * points(first commit, event outcome)
                  + 0.5 * points(last commit, event outcome) - 0.8 * variants tried
 
+After the engine was aligned to the author's original, the engine's default
+stream IS the note's stream and its ledger IS the two-forecast scoring. "merged"
+below therefore means the historical (pre-alignment) engine: its stream is set
+explicitly in ``run`` and its scoring is the offline per-attempt rescoring.
 Neither changes a guard or the acceptance rule. Usage:
     python -m experiments.reconcile_note [--write]
 """
@@ -41,8 +45,10 @@ def run(regime: str, seed: int, rng: str, **inj):
         reg.engine_config(seed),
         InjectionConfig(first_factor=reg.first_factor, mirror_variant=reg.mirror_variant, **inj),
     )
-    if rng == "note":
-        eng.injection_rng = np.random.default_rng(seed + 10_000_007)
+    if rng == "merged":  # historical pre-alignment stream, set explicitly
+        eng.injection_rng = np.random.default_rng([seed, 0xC4157A11])
+    elif rng == "note":
+        eng.injection_rng = np.random.default_rng(seed + eng.injection.seed_offset)
     s = eng.run()
     ev = [[len(e["attempts"]), bool(e["passed"])] for e in eng.injections]
     return s, ev

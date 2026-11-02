@@ -70,3 +70,11 @@ def collect_set(set_name: str, workers: int | None = None, use_cache: bool = Tru
         for r in runs:
             fh.write(json.dumps(r) + "\n")
     return runs
+
+
+if __name__ == "__main__":
+    import sys
+
+    fresh = "--fresh" in sys.argv  # re-collect every raw run instead of reading the cache
+    for name in SETS:
+        print(name, len(collect_set(name, use_cache=not fresh)))

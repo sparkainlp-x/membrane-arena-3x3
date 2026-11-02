@@ -1,9 +1,15 @@
 """Offline scoring of commit policies from recorded events (SYNTHETIC).
 
-An event is ``(n_attempts, passed)``. The engine scores every variant tried:
-attempts 1..n-1 failed (truth 0), attempt n has truth ``passed``; the commit
-before attempt k is the first commit revised k-1 times halfway toward 0.5.
-Tests in ``tests/test_experiments.py`` pin this to the engine's own ledger.
+An event is ``(n_attempts, passed)``. Attempts 1..n-1 failed, attempt n passed
+or not; the commit before attempt k is the first commit revised k-1 times
+halfway toward 0.5. Two scorings are implemented:
+
+* ``ledger_two_forecast``: the engine's scoring (author's original), two
+  forecasts per event minus 0.8 per variant. ``tests/test_experiments.py`` pins
+  it to the engine's own ledger.
+* ``ledger_per_attempt``: every variant scored, cost not subtracted. This is
+  what the first merged version of the engine did; it is kept so both scorings
+  can be reported side by side, and a test pins it to the engine's attempt records.
 """
 
 from __future__ import annotations
@@ -44,7 +50,7 @@ def attempt_commits(p1: float, n: int) -> list[float]:
 
 
 def ledger_per_attempt(events, firsts) -> float:
-    """Merged engine scoring: sum of points over every variant tried (cost not subtracted)."""
+    """Per-attempt scoring (first merged version): sum of points over every variant tried, cost not subtracted."""
     total = 0.0
     for (n, passed), p1 in zip(events, firsts):
         for k, p in enumerate(attempt_commits(p1, n)):
@@ -53,7 +59,7 @@ def ledger_per_attempt(events, firsts) -> float:
 
 
 def ledger_two_forecast(events, firsts) -> float:
-    """Design-note scoring: mean of first and last commit points vs the event outcome, minus 0.8 per variant."""
+    """Engine scoring (author's original): mean of first and last commit points vs the event outcome, minus 0.8 per variant."""
     total = 0.0
     for (n, passed), p1 in zip(events, firsts):
         ps = attempt_commits(p1, n)
