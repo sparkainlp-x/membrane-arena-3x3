@@ -33,6 +33,17 @@ class LatticeConfig:
     mirror_max: float = 0.50
     resonance_threshold: float = 0.90
     dt: float = 0.05
+    # EXPERIMENTAL — per-cell time difference in the unitary stage.
+    # `dt_multipliers[k]` scales cell k's clock rate (row-major, k = 3*i+j);
+    # `phase_offsets[k]` adds a per-step time advance in the same units as
+    # dt. The effective unitary time for cell k in one step is
+    # `dt * dt_multipliers[k] + phase_offsets[k]`; the dissipative,
+    # interaction and calibrator stages still use the shared dt. Defaults
+    # (all 1.0 / all 0.0) reproduce the stock update exactly. Bounds keep
+    # the clocks bounded: a multiplier above 3.0 or a phase above 0.10
+    # (2x dt) is rejected, so no cell can run away from the lattice.
+    dt_multipliers: tuple[float, ...] = (1.0,) * 9
+    phase_offsets: tuple[float, ...] = (0.0,) * 9
     # "legacy" reproduces the published update exactly (Euler commutator
     # step + the non-trace-preserving apply_dephasing). "exact" uses the
     # structure-preserving stages below: exact unitary conjugation and
@@ -62,6 +73,16 @@ class LatticeConfig:
             raise ValueError("dt must be > 0")
         if self.operator_mode not in ("legacy", "exact"):
             raise ValueError("operator_mode must be 'legacy' or 'exact'")
+        if len(self.dt_multipliers) != 9:
+            raise ValueError("dt_multipliers must have exactly 9 entries (3x3)")
+        if len(self.phase_offsets) != 9:
+            raise ValueError("phase_offsets must have exactly 9 entries (3x3)")
+        for value in self.dt_multipliers:
+            if not 0.0 <= value <= 3.0:
+                raise ValueError("dt_multipliers must be in [0.0, 3.0]")
+        for value in self.phase_offsets:
+            if not 0.0 <= value <= 0.10:
+                raise ValueError("phase_offsets must be in [0.0, 0.10]")
 
 class MembraneLattice:
     """Nine density-matrix cells arranged as a 3x3 grid.
@@ -173,10 +194,15 @@ class MembraneLattice:
             for j in range(3):
                 rho = self.state[i, j]
                 h = self.hamiltonians[i, j]
+                # Per-cell clock for the unitary stage only: the shared
+                # dt (possibly retry-scaled) times this cell's multiplier,
+                # plus its additive phase. Defaults give dt_eff exactly.
+                k = 3 * i + j
+                dt_cell = dt_eff * cfg.dt_multipliers[k] + cfg.phase_offsets[k]
 
                 if mode == "legacy":
                     commutator = h @ rho - rho @ h
-                    unitary = -1j * dt_eff * commutator
+                    unitary = -1j * dt_cell * commutator
                     dissipative = apply_dephasing(rho, dephasing_eff * dt_eff)
                     delta = unitary + (dissipative - rho)
                     delta += self.interaction_delta(i, j, coupling_eff) * dt_eff
@@ -186,7 +212,7 @@ class MembraneLattice:
                         )
                     nxt = project_valid(rho + delta)
                 else:
-                    nxt = self.unitary_stage(rho, h, dt_eff, mode)
+                    nxt = self.unitary_stage(rho, h, dt_cell, mode)
                     nxt = self.dissipative_stage(nxt, dephasing_eff * dt_eff, mode)
                     nxt = nxt + self.interaction_delta(i, j, coupling_eff) * dt_eff
                     if calibrator_signal:

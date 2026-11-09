@@ -373,6 +373,33 @@ class MembraneArena3x3:
         repair_attempts: list[dict] = []
         accepted_via_repair = False
 
+        # Pairwise-guard reference: a retry variant is judged against the
+        # FULL-step candidate's minimum divergence, not its own. A
+        # smaller-dt retry can move a collided pair apart (pair fidelity
+        # 0.95 -> 0.9457 at dt x0.5 vs -> 0.9525 at full dt), so judging a
+        # variant by its own divergence would launder a collided step
+        # past the guard. If the full step is collided, no variant can
+        # rescue the step. (Skipped only when the full-step candidate is
+        # an invalid density matrix, where the reference divergence is
+        # meaningless and the rejection is a separate failure mode.)
+        # The reference uses the FULL pairwise condition (threshold AND
+        # margin): a candidate whose min divergence is low only because
+        # the whole lattice is synchronising is not a collision.
+        # Metrics may be empty for an invalid candidate; default to 1.0
+        # (not collided) so the reference is well-defined there.
+        pairwise_threshold = self.config.guards.min_pairwise_divergence
+        _metrics = report.get("metrics") or {}
+        full_min_divergence = _metrics.get("min_divergence", 1.0)
+        full_mean_divergence = _metrics.get("mean_divergence", 1.0)
+        pairwise_reference_ok = (
+            pairwise_threshold is None
+            or reason.startswith("invalid_density_matrix")
+            or not self.observer.pairwise_collapsed_values(
+                full_min_divergence, full_mean_divergence
+            )
+        )
+        full_report = report
+
         if not accepted and self.config.adaptive_retry:
             for k in range(self.config.max_retries):
                 dt_eff = lattice_cfg.dt * self.config.retry_dt_factors[k]
@@ -404,6 +431,16 @@ class MembraneArena3x3:
                     and coupling_eff == lattice_cfg.coupling
                     else "model_intervention"
                 )
+                # The variant may pass on its own trajectory, but if the
+                # full-step reference is collided the step is a collision
+                # and no smaller-dt variant may launder it past the guard.
+                # The reason stays the plain guard name (the attempt and
+                # step records already carry the full-step reference in
+                # pairwise_reference_ok / pairwise_reference_min_divergence).
+                laundered = ok and not pairwise_reference_ok
+                if laundered:
+                    ok = False
+                    variant_reason = "pairwise_divergence_below_minimum"
                 attempt = {
                     "step": self.current_step + 1,
                     "attempt": k + 1,
@@ -415,10 +452,14 @@ class MembraneArena3x3:
                     "accepted": bool(ok),
                     "reason": variant_reason,
                     **variant_report,
+                    "pairwise_reference_ok": pairwise_reference_ok,
+                    "pairwise_reference_min_divergence": full_min_divergence,
                 }
                 attempts.append(attempt)
                 repair_attempts.append(attempt)
-                report = variant_report
+                # A laundered variant is rejected on the full-step
+                # reference, so the rejection record shows the collision.
+                report = full_report if laundered else variant_report
                 if ok:
                     candidate, accepted, reason = variant, True, "ok"
                     accepted_via_repair = True
@@ -477,6 +518,8 @@ class MembraneArena3x3:
             "repair_attempts": repair_attempts,
             "attempts": attempts,
             "accepted_time": self.accepted_time,
+            "pairwise_reference_ok": pairwise_reference_ok,
+            "pairwise_reference_min_divergence": full_min_divergence,
         }
 
     def run(self) -> dict:
@@ -484,7 +527,35 @@ class MembraneArena3x3:
 
         The step counter and the logs continue from where the last call
         stopped; a second call does not restart them.
+
+        Before the first step, the pairwise guard (when enabled) is also
+        checked against the INITIAL state: a run that starts collided is
+        caught at step 0 — the breaker latches with 0 accepted steps —
+        instead of being discovered only after a step.
         """
+        if self.config.steps > 0 and not self.circuit_breaker:
+            threshold = self.config.guards.min_pairwise_divergence
+            if threshold is not None:
+                initial = self.observer.observe(
+                    self.lattice.state, self.lattice.reference, 0
+                )
+                if self.observer.pairwise_collapsed(initial):
+                    report = self.observer.guard_report(initial)
+                    self.rejections.append(
+                        {
+                            "step": 0,
+                            "reason": "pairwise_divergence_below_minimum",
+                            "failed_guard": "pairwise_divergence_below_minimum",
+                            "offending_cells": report["offending_cells"],
+                            "offending_by_guard": report["offending_by_guard"],
+                            "metrics": report["metrics"],
+                            "thresholds": report["thresholds"],
+                            "repair_attempts": [],
+                        }
+                    )
+                    self.failures = self.config.failure_limit
+                    self.circuit_breaker = True
+                    return self.summary()
         for _ in range(self.config.steps):
             result = self.step()
             if result["status"] == "circuit_breaker_open":
