@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata from this file."
 title: "Membrane Arena 3x3 + Yin-Yang Shield: a 3x3 lattice of density-matrix cells with an observer and a calibrator (SYNTHETIC classical simulation)"
@@ -7,7 +9,7 @@ authors:
     given-names: "Jean-François"
     orcid: "https://orcid.org/0009-0000-9778-5374"
     affiliation: "Spark AI NLP, Fredericton, New Brunswick, Canada"
-version: 0.1.0
+version: 0.3.0
 license: AGPL-3.0-only
 repository-code: "https://github.com/sparkainlp-x/membrane-arena-3x3"
 abstract: >-

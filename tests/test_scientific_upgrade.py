@@ -35,8 +35,21 @@ def test_guard_thresholds_are_configurable_and_logged():
         "divergence_max": 0.9,
         "purity_floor": 0.01,
         "entropy_target": 0.7,
+        "min_pairwise_divergence": 0.10,
+        "min_pairwise_margin": 0.05,
         "failure_limit": 7,
     }
+    # The pairwise guard is the adopted default (0.10); passing it
+    # explicitly is the same as the default, and it is logged.
+    guarded = MembraneArena3x3(
+        EngineConfig(
+            steps=6,
+            seed=42,
+            guards=GuardConfig(min_pairwise_divergence=0.10),
+            failure_limit=7,
+        )
+    ).run()
+    assert guarded["guards"]["min_pairwise_divergence"] == 0.10
 
 
 def test_divergence_min_is_now_a_real_check():
@@ -147,8 +160,17 @@ def test_evolution_stages_are_independently_testable():
     assert abs(np.trace(delta).real) < 1e-9  # interaction is trace-free
 
 
-def test_exact_mode_changes_the_failure_guard_on_seed_42():
-    # Measured: legacy first fails on residual, exact first fails on purity.
+def test_exact_mode_global_synchronisation_is_caught_by_mean_guard():
+    # Measured (after the purity-floor recalibration to 0.02 AND the
+    # pairwise margin 0.05): legacy first fails on residual; exact
+    # first fails on divergence_below_minimum — the MEAN divergence
+    # guard — after ~30 accepted steps, as TP phase damping
+    # synchronises the whole lattice. The pairwise guard does NOT fire
+    # on this: min and mean divergence fall together (margin <= 0.032
+    # measured across 5 seeds), so the collapse is lattice-wide, not
+    # pair-specific. Before the margin, exact first failed on the
+    # pairwise guard at ~step 9; before the recalibration (floor 0.05),
+    # exact first failed on purity_too_low.
     legacy = MembraneArena3x3(EngineConfig(seed=42)).run()
     exact = MembraneArena3x3(
         EngineConfig(
@@ -157,4 +179,8 @@ def test_exact_mode_changes_the_failure_guard_on_seed_42():
         )
     ).run()
     assert legacy["rejections"][0]["reason"] == "residual_above_target"
-    assert exact["rejections"][0]["reason"] == "purity_too_low"
+    assert (
+        exact["rejections"][0]["reason"]
+        == "divergence_below_minimum"
+    )
+    assert exact["accepted_steps"] >= 28
