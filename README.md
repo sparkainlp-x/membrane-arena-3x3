@@ -85,6 +85,64 @@ The stock defaults above are kept for reproducibility, and the upgrade below is 
 - **Why a smaller-dt retry can move a pair apart (decomposed).** For a 0.95 matched-clock pair (seed 42, legacy mode), the full step converges (fidelity 0.95 -> 0.9525) but the dt x0.5 retry diverges (0.95 -> 0.9457). Stage-by-stage decomposition (single-stage and cumulative, at full / half / quarter / eighth dt, using the real retry parameter sets): the per-step fidelity change is a competition between the Euler unitary stage, which DIVERGES the pair (single-stage −0.0095 at full dt, −0.0068 at half dt — it shrinks only ~1.4x from full to half dt), and the dephasing contraction, which CONVERGES it (single-stage +0.0048 at full dt, +0.0013 at half dt — it shrinks ~4x per halving, i.e. roughly dt²). At full dt the contraction wins (net +0.0025); at half dt and below the Euler leak wins (net −0.0043, −0.0025, −0.0010). Interaction, calibrator, mirror and projection are all ≤0.0004 single-stage and do not drive the flip; the mirror amplifies whichever direction the pair is already going (a follower, not a driver). The stages do not add linearly (sum of singles −0.0052 at full dt vs full-step +0.0025) — the dephasing recovery depends on the state the unitary stage left, so the composition itself is nonlinear. The Euler divergence is monotone in dt on seeds 1 and 7; the seed-42 peak at dt≈0.04 (−0.0110, worse than full dt) is pair-specific, not a general stage property. **Clipping vs rotation, decomposed (seed 42, 0.95 matched-clock pair).** The negative eigenvalues the Euler step introduces (min −0.0041 at full dt, shrinking ~6–9x per halving) show the projection clipping contributes to the unitary divergence at large dt — and the decomposition now separates the two. The exact unitary alone (pure rotation, no Euler error) changes pair fidelity by EXACTLY 0.000000000 at every dt — rotation contributes nothing (matched Hamiltonians rotate both cells together; unitary invariance). The raw Euler step, measured in the Hilbert–Schmidt metric (which needs no PSD, so no clipping is involved), diverges the pair by only −0.001754 at full dt, −0.000466 at half dt, −0.000118 at quarter dt — ~5x smaller than the fidelity-measured drop, and monotone in dt with NO peak. The fidelity-measured Euler+clip drop is −0.009500 / −0.006838 / −0.002662 at full / half / quarter dt. And the projection method flips the sign: the same raw Euler state through a shift projection (eigenvalues shifted up so the minimum is 0, then renormalised) gives +0.020984 / +0.003926 / −0.000002. **Conclusion: the "Euler unitary divergence" as measured by fidelity-after-clip-projection is dominated by the projection + fidelity composition, not by the Euler step itself** — the raw Euler error is small and monotone; the fidelity metric amplifies the clipping effect (square root of eigenvalues: small changes in the small-eigenvalue directions where clipping acts move fidelity a lot); and the projection method flips the sign. The dt≈0.04 peak lives in that composition, not in the raw Euler step: a fine scan shows a smooth hump peaking at dt≈0.036 (−0.011693, ~23% worse than full dt) for seed 42's pair (0,0)-(0,1) at 0.95, but seed 1 and seed 7 show no peak (monotone), seed 123 peaks at 0.04, seed 2026 at 0.045, another pair peaks at 0.035, another is monotone, and one pair REVERSES (magnitude grows as dt shrinks). The peak appears in about half the cases at dt≈0.035–0.045, at different exact positions — a real feature of the Euler+clip+fidelity composition for a given (H, ρ) pair, not an artifact of one seed and not a physical resonance; the negative-eigenvalue mass is monotone in dt (1.07e-02 at full dt, ~dt²), so the peak is not in the clipping mass but in how the clipped eigendirections interact with the fidelity's square root.
 
 The upgrade does not change what the model is: synthetic classical software, no quantum hardware, no physical holography, no biological, medical or consciousness claim. The Crystallize injection subclass retains its own variant loop and scoring/RNG behavior; its accepted-time accounting and attempt telemetry now use the same summary contract as the stock engine.
+## Vector calculus on the lattice (v0.2.1)
+
+The stock "divergence" is `1 - fidelity` between cell pairs: a scalar
+dissimilarity, NOT `div F` of a vector field. `membrane_arena_3x3/vector_calculus.py`
+adds a genuine discrete vector calculus on the lattice, built from one scalar
+field, and measures whether it predicts anything. Full pre-registration
+(thresholds frozen before the evaluation split): `docs/vector_calculus_preregistration.md`;
+evidence: `experiments/results/vector_calculus.json`; reproduce with
+`python scripts/measure_vector_calculus.py`.
+
+- **Construction.** Scalar field `s[i, j]` = fidelity of cell `(i, j)` to its
+  reference state (or purity, via `kind="purity"`). Flow `F = -grad s` lives on
+  cell faces; boundary faces carry zero flux (closed lattice: fidelity
+  redistributes between cells, never leaves). Divergence is the finite-volume
+  net outward face flux per cell. Curl is the circulation of `F` around each
+  cell, with tangential face values averaged over the two cells sharing the
+  face. Corner cells carry nonzero divergence (a constant-extrapolation
+  boundary would zero them identically).
+- **Gauss and Stokes are validation tautologies, reported as such.** Both
+  sums telescope: interior faces cancel pairwise, so the identities hold by
+  construction for ANY field, including random noise. They validate the
+  implementation (a wrong sign or index breaks them); they discover nothing
+  about the membrane. Measured: max |residual| 6.66e-16 (Gauss) and 2.78e-16
+  (Stokes) over 200 random fields plus every real lattice field in a stock
+  run — claims (ii) and (iii) PASS, as implementation checks.
+- **Divergence-as-escape-predictor — PASS.** An escape event is a step
+  rejected with a divergence-band guard reason (`pairwise_divergence_below_minimum`,
+  `divergence_below_minimum`, `divergence_above_maximum`). Features come from
+  the PRE-step state, so the prediction is one step ahead. Frozen flag:
+  `max |div| > 0.15`. Evaluation split (seeds 0, 2, 3, 11, 99, 123, 2026;
+  stock, offset-ladder, exact, planted-collision, high-coupling configs):
+  490 steps, 105 escapes (base rate 0.214), precision 0.722, recall 0.667,
+  F1 0.693 — a 3.37x lift over base rate, clearing the frozen bars
+  (lift >= 2.0x, recall >= 0.30). Claim (i) PASS. Calibration split
+  (seeds 42, 1, 7) agreed: precision 0.667, recall 0.667, lift 3.16x.
+- **Divergence beats the fidelity baseline — PASS.** Same labelled steps:
+  rank AUC of `max |div|` 0.769 vs AUC of the stock scalar
+  `max(1 - fidelity)` 0.624 — a gain of 0.145, clearing the frozen bar
+  (>= 0.05). The fidelity-drop baseline (`max_fidelity_drop`) scores AUC
+  0.253, below chance: escapes carry SMALLER prior fidelity drops than
+  non-escapes, because planted collisions escape at step 1 with no prior
+  drop and exact-mode synchronisation raises fidelity. Claim (iv) PASS.
+- **Honest limits.** The predictor is asymmetric by construction: all 35
+  evaluation false negatives are exact-mode `divergence_below_minimum`
+  escapes — global synchronisation shrinks fidelity differences, so
+  divergence is small when the whole lattice exits the band from below
+  (pre-step `max |div|` 0.026–0.067 there). Divergence predicts
+  pair-specific escapes (collision / flying apart: all 70 true positives
+  are offset-ladder and planted-collision steps), not global-sync escapes;
+  the mean-divergence guard, not this diagnostic, is the detector for
+  those. Escapes here are config-constructed (planted collision, offset
+  ladder, exact sync), not spontaneous stock-run events: stock and
+  high-coupling runs produced 0 escapes on both splits. The "divergence"
+  is a diagnostic on a discrete 3x3 grid of fidelity scores, NOT `div F`
+  of a physical field; no physical field-theory claim is made. Round-6
+  context noted a margin-guard escape window of ≈0.04/step; this build
+  does not re-measure it.
+
 ## Known limits
 
 These are properties of the model as published, not bugs that were fixed. Statements marked "exploratory" come from throwaway experiments that are not part of the test suite.
