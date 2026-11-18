@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Pins the measured default behavior documented under "Known limits".
 
 With the default settings the lattice drifts out of the guard envelope within

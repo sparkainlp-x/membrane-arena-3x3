@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Reproducible benchmark suite for Membrane Arena 3x3 (SYNTHETIC).
 
 Produces parameter-response curves, stability maps and falsifiable

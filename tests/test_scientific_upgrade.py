@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Scientific upgrade: configurable guards, adaptive retry, metric names,
 trace-preserving operators, and benchmark determinism. All SYNTHETIC."""
 

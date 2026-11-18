@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """The calibration log records bounded signals and the parameters in effect."""
 
 from membrane_arena_3x3.engine import EngineConfig, MembraneArena3x3

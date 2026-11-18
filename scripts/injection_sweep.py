@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Measure the stock arena against the opt-in Crystallize injection (SYNTHETIC).
 
 Usage:  python scripts/injection_sweep.py [--write docs/injection_results.md]

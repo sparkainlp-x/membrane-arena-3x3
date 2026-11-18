@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """The circuit breaker opens after repeated failures and then stops all updates."""
 
 import numpy as np

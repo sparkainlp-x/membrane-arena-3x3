@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """A rejected update must leave the whole lattice bit-identical (all or nothing)."""
 
 import numpy as np
