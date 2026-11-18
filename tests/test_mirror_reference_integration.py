@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Integration contract for the open PR #10 mirror-reference dependency."""
 
 import numpy as np

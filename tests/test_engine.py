@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Tests for the synthetic 3x3 membrane arena engine."""
 
 import numpy as np

@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Small synthetic wave-memory channel benchmark; not a hardware simulator."""
 
 from __future__ import annotations

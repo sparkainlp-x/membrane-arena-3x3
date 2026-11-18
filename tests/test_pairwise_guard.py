@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Pairwise collision guard, ADOPTED as a real guard (default 0.10).
 
 The stock shields only check MEAN pairwise divergence, which is blind to

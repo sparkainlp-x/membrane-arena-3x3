@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Tests for the experiment helpers (SYNTHETIC). The helpers are not part of the package."""
 
 import numpy as np

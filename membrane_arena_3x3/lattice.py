@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """3x3 lattice of coupled synthetic membrane cells."""
 
 from __future__ import annotations

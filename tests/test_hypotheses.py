@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Falsifiable hypotheses, measured with the benchmark (SYNTHETIC).
 
 Each test states the regime it was measured in. If a hypothesis fails
