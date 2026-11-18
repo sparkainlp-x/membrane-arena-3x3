@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Opt-in Crystallize injection engine for the SYNTHETIC 3x3 membrane arena.
 
 The stock engine retries an identical proposal after a rejection (README,

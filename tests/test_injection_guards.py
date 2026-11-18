@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Negative controls: the injection never loosens a guard (SYNTHETIC)."""
 
 import numpy as np

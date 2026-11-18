@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Transactional simulation engine for the 3x3 membrane lattice."""
 
 from __future__ import annotations

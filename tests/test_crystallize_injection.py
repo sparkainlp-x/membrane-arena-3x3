@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """Tests for the Crystallize injection engine (membrane-arena-3x3).
 
 SYNTHETIC. Run from the repository root:  pytest tests/test_crystallize_injection.py -q

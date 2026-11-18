@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Jean-Francois Brisson (Spark AI NLP)
+# SPDX-License-Identifier: AGPL-3.0-only
 """The summary always has the same keys, including for a zero-step run."""
 
 from membrane_arena_3x3.engine import EngineConfig, MembraneArena3x3
