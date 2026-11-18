@@ -27,8 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--residual-target", type=float, default=0.20)
     parser.add_argument("--divergence-min", type=float, default=0.02)
     parser.add_argument("--divergence-max", type=float, default=0.60)
-    parser.add_argument("--purity-floor", type=float, default=0.05)
+    parser.add_argument("--purity-floor", type=float, default=0.02)
     parser.add_argument("--entropy-target", type=float, default=0.5)
+    parser.add_argument("--min-pairwise-divergence", type=float, default=0.10)
+    parser.add_argument("--pairwise-margin", type=float, default=0.05)
     parser.add_argument("--failure-limit", type=int, default=5)
     parser.add_argument("--operator-mode", default="legacy", choices=["legacy", "exact"])
     parser.add_argument("--no-adaptive-retry", action="store_true")
@@ -63,6 +65,8 @@ def main() -> None:
                 divergence_max=args.divergence_max,
                 purity_floor=args.purity_floor,
                 entropy_target=args.entropy_target,
+                min_pairwise_divergence=args.min_pairwise_divergence,
+                min_pairwise_margin=args.pairwise_margin,
             ),
             steps=args.steps,
             seed=args.seed,
